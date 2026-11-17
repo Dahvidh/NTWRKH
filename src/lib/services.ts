@@ -184,8 +184,18 @@ export async function saveAnalysis(userId: string, caption: string, analysis: An
 }
 
 export async function invokeAI<T>(action: string, payload: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('ntwrkh-ai', { body: { action, ...payload } });
-  if (error) throw error;
+  const requestId = crypto.randomUUID();
+  const { data, error } = await supabase.functions.invoke('ntwrkh-ai', {
+    body: { action, ...payload, requestId },
+  });
+  if (error) {
+    const context = (error as any)?.context;
+    if (context?.json) {
+      const details = await context.json().catch(() => null);
+      if (details?.error) throw new Error(details.error);
+    }
+    throw error;
+  }
   if (data?.error) throw new Error(data.error);
   return data as T;
 }

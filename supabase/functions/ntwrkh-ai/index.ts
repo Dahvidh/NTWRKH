@@ -126,7 +126,7 @@ async function trackAIRequest(
     }).eq("user_id", userId).eq("request_id", requestId);
     if (updateError) console.error("Could not record AI failure", updateError.message);
     if (unavailable) {
-      throw new ProviderError("NTWRKH's AI provider is temporarily unavailable. Please try again later; you have not been charged NTWRKH credits for this failed request.", 503, "AI_PROVIDER_BILLING_LIMIT");
+      throw new ProviderError("You have no credits remaining. Add credits to continue using.", 503, "AI_PROVIDER_BILLING_LIMIT");
     }
     throw providerError;
   }

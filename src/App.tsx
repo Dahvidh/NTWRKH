@@ -346,8 +346,9 @@ function App() {
       const result = await invokeAI<{ analysis: Analysis }>('analyze', { caption, imageData: imageData || undefined, imageMimeType: imageMime, imageFrames: videoFrames });
       setAnalysis(result.analysis);
       if (user?.userId) await saveAnalysis(user.userId, caption, result.analysis);
-    } catch (e) {
-      setError('The AI analysis could not be completed. Please try again.');
+    } catch (e: any) {
+      console.error('NTWRKH content analysis failed:', e);
+      setError(e?.message || 'The AI analysis could not be completed. Please try again.');
     } finally {
       setBusy(false);
     }

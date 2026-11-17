@@ -118,7 +118,7 @@ async function trackAIRequest(
     const providerError = error instanceof ProviderError
       ? error
       : new ProviderError("The AI provider could not complete this request.", 502, "AI_PROVIDER_ERROR");
-    const unavailable = providerError.code === "insufficient_quota" || providerError.code === "billing_hard_limit_reached";
+    const unavailable = ["insufficient_quota", "billing_hard_limit_reached", "credit_balance_exhausted"].includes(providerError.code) || /no credits remaining|credit balance.*(exhausted|insufficient)|add credits to continue/i.test(providerError.message);
     const { error: updateError } = await admin.from("ai_usage_ledger").update({
       status: unavailable ? "provider_unavailable" : "failed",
       error_code: providerError.code,

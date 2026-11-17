@@ -108,7 +108,16 @@ Deno.serve(async (req) => {
   const { data: { user }, error: authError } = await userClient.auth.getUser();
   if (authError || !user) return json({ error: "Your session has expired. Please sign in again." }, 401);
 
+  const workerId = crypto.randomUUID();
+  let slotId: number | null = null;
   try {
+    const { data: acquiredSlot, error: slotError } = await admin.rpc("ntwrkh_acquire_ai_worker_slot", {
+      p_worker_id: workerId, p_lease_seconds: 120,
+    });
+    if (slotError) throw slotError;
+    slotId = acquiredSlot === null ? null : Number(acquiredSlot);
+    if (!slotId) return json({ processed: false, capacity: true, message: "All AI workers are busy. Your request remains safely queued." }, 202);
+
     const { data: jobs, error: claimError } = await admin.rpc("ntwrkh_claim_next_ai_job", { p_user_id: user.id });
     if (claimError) throw claimError;
     const job = Array.isArray(jobs) ? jobs[0] : jobs;
@@ -147,7 +156,7 @@ Deno.serve(async (req) => {
         status: code === "AI_PROVIDER_BILLING_LIMIT" ? "provider_unavailable" : "failed",
         error_code: code, completed_at: new Date().toISOString(),
       }).eq("user_id", user.id).eq("request_id", job.request_id);
-      const { data: newStatus } = await admin.rpc("fail_ai_job", {
+      const { data: newStatus } = await admin.rpc("ntwrkh_fail_ai_job", {
         p_job_id: job.id, p_error_message: message, p_error_code: code, p_retryable: retryable,
       });
       return json({ processed: true, jobId: job.id, status: newStatus || "failed", error: message }, 200);
@@ -155,5 +164,12 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("AI worker failed", error);
     return json({ error: "The AI worker could not process this request. Please try again." }, 503);
+  } finally {
+    if (slotId !== null && Number.isFinite(slotId)) {
+      const { error: releaseError } = await admin.rpc("ntwrkh_release_ai_worker_slot", {
+        p_slot_id: slotId, p_worker_id: workerId,
+      });
+      if (releaseError) console.error("AI worker slot release failed", releaseError.message);
+    }
   }
 });

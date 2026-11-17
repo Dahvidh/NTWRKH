@@ -96,6 +96,9 @@ async function trackAIRequest(
     throw new ProviderError("NTWRKH could not reserve this AI request. Please try again shortly.", 503, "AI_CAPACITY_CHECK_FAILED");
   }
   if (!reservation?.allowed) {
+    if (reservation?.reason === "duplicate_request") {
+      throw new ProviderError("This AI request has already been submitted. Please wait for the existing result.", 409, "DUPLICATE_AI_REQUEST");
+    }
     if (reservation?.reason === "user_daily_limit") {
       throw new ProviderError("You've reached today's AI usage limit. Please try again tomorrow.", 429, "USER_DAILY_LIMIT");
     }

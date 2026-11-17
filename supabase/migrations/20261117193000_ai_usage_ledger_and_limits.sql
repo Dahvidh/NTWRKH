@@ -31,10 +31,10 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtext('ntwrkh-ai-usage'));
   if exists (select 1 from public.ai_usage_ledger where user_id = p_user_id and request_id = p_request_id) then
-    return jsonb_build_object('allowed', true, 'duplicate', true);
+    return jsonb_build_object('allowed', false, 'reason', 'duplicate_request');
   end if;
   select count(*) into v_user_count from public.ai_usage_ledger
-    where user_id = p_user_id and created_at >= date_trunc('day', now());
+    where user_id = p_user_id and created_at >= date_trunc('day', now()) and status <> 'provider_unavailable';
   if v_user_count >= greatest(1, p_user_daily_limit) then
     return jsonb_build_object('allowed', false, 'reason', 'user_daily_limit');
   end if;

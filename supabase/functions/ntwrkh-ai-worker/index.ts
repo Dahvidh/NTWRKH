@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
   let slotId: number | null = null;
   try {
     const { data: acquiredSlot, error: slotError } = await admin.rpc("ntwrkh_acquire_ai_worker_slot", {
-      p_worker_id: workerId, p_lease_seconds: 120,
+      p_worker_id: workerId, p_lease_seconds: 300,
     });
     if (slotError) throw slotError;
     slotId = acquiredSlot === null ? null : Number(acquiredSlot);

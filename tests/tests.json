@@ -1,0 +1,113 @@
+[
+  {
+    "name": "TikTok OAuth creates a secure NTWRKH creator workspace",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "TikTok Login Kit authorization",
+      "OAuth state expiry and replay protection",
+      "server-side token exchange",
+      "AES-256-GCM token encryption",
+      "HttpOnly session restoration",
+      "private creator workspace"
+    ],
+    "description": "Verifies a TikTok identity can create and restore a secure NTWRKH account.",
+    "steps": [
+      "Open the NTWRKH sign-in page",
+      "Choose Continue with TikTok",
+      "Complete authorization using the configured TikTok developer app",
+      "Finish creator profile setup",
+      "Refresh and open TikTok account"
+    ],
+    "expected": "The creator workspace is restored and only profile metadata and granted scopes are visible; tokens remain server-side."
+  },
+  {
+    "name": "TikTok Creator Lab generates a seven-day strategy",
+    "viewport": "desktop",
+    "covers": [
+      "TikTok niche and audience brief",
+      "AI content positioning",
+      "content pillars and video hooks",
+      "seven-day content calendar",
+      "TikTok search phrase and hashtag themes",
+      "engagement prompts",
+      "honest disclosure of unavailable live trend data"
+    ],
+    "description": "Verifies a creator brief produces a practical TikTok strategy without claiming live trend access.",
+    "steps": [
+      "Sign in to NTWRKH",
+      "Open TikTok Creator Lab",
+      "Enter a niche and optional audience, goal, format and region",
+      "Generate the plan"
+    ],
+    "expected": "The result shows positioning, pillars, hooks, seven calendar entries, search phrases, hashtag themes and engagement prompts."
+  },
+  {
+    "name": "Discover YouTube videos and creators with public API data",
+    "viewport": "desktop",
+    "covers": [
+      "YouTube API key stored server-side",
+      "authenticated YouTube discovery route",
+      "keyword video search",
+      "channel and creator discovery",
+      "video view statistics",
+      "channel subscriber and video statistics",
+      "search validation and quota error handling",
+      "existing NTWRKH Discover feed remains separate"
+    ],
+    "description": "Verifies YouTube search returns public video or channel results and useful public statistics without exposing the API key.",
+    "steps": [
+      "Sign in to NTWRKH",
+      "Open YouTube Discover",
+      "Search for a niche or keyword in Videos",
+      "Review video thumbnails, channel names and view counts",
+      "Switch to Creators & channels and search again",
+      "Open a result on YouTube"
+    ],
+    "expected": "Relevant public videos or channels appear with available public statistics, links open YouTube, and the original Discover feed remains available separately."
+  },
+  {
+    "name": "Submit content, understand it and generate distribution opportunities",
+    "viewport": "desktop",
+    "covers": [
+      "caption and image input",
+      "AI content analysis",
+      "topic and hashtag recommendations",
+      "agent-first content intake",
+      "AI content classification and audience understanding",
+      "distribution opportunity recommendations",
+      "existing NTWRKH discovery feed visibility"
+    ],
+    "description": "Verifies the primary agent-first workflow analyses submitted content and returns actionable distribution opportunities while preserving the existing discovery feed.",
+    "steps": [
+      "Open the NTWRKH assistant workspace",
+      "Paste a caption and optionally upload an image in the content intake area",
+      "Run Understand my content",
+      "Review the detected category, topic, audience and keywords",
+      "Choose Find where this belongs",
+      "Review the generated distribution opportunities"
+    ],
+    "expected": "The submitted content is analysed, its topic and likely audience are displayed, and the distribution endpoint returns recommendations without requiring a separate dashboard workflow."
+  },
+  {
+    "name": "Protect creator data and validate YouTube discovery on mobile",
+    "viewport": "mobile",
+    "covers": [
+      "unauthenticated private API rejection",
+      "user-scoped profile and chat data",
+      "empty YouTube search validation",
+      "YouTube discovery responsive layout",
+      "empty content analysis validation",
+      "responsive TikTok Creator Lab"
+    ],
+    "description": "Verifies private routes reject anonymous access, invalid YouTube searches are blocked, and the new discovery interface works on mobile.",
+    "steps": [
+      "Open a private workspace API without a TikTok session",
+      "Sign in and open YouTube Discover on mobile",
+      "Submit a one-character search",
+      "Verify validation feedback and enter a two-character keyword",
+      "Open TikTok Creator Lab and Create content"
+    ],
+    "expected": "Private data is not exposed, short searches are blocked with feedback, and YouTube discovery remains usable on a mobile screen."
+  }
+]

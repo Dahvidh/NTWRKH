@@ -185,19 +185,60 @@ export async function saveAnalysis(userId: string, caption: string, analysis: An
 
 export async function invokeAI<T>(action: string, payload: Record<string, unknown>): Promise<T> {
   const requestId = crypto.randomUUID();
-  const { data, error } = await supabase.functions.invoke('ntwrkh-ai', {
-    body: { action, ...payload, requestId },
-  });
-  if (error) {
-    const context = (error as any)?.context;
+
+  // YouTube search is a read-only API lookup, not a billable generative AI job.
+  if (action === 'youtube-search') {
+    const { data, error } = await supabase.functions.invoke('ntwrkh-ai', {
+      body: { action, ...payload, requestId },
+    });
+    if (error) {
+      const context = (error as any)?.context;
+      if (context?.json) {
+        const details = await context.json().catch(() => null);
+        if (details?.error) throw new Error(details.error);
+      }
+      throw error;
+    }
+    if (data?.error) throw new Error(data.error);
+    return data as T;
+  }
+
+  const readFunctionError = async (error: any) => {
+    const context = error?.context;
     if (context?.json) {
       const details = await context.json().catch(() => null);
-      if (details?.error) throw new Error(details.error);
+      if (details?.error) return String(details.error);
     }
-    throw error;
+    return error?.message || 'The AI request could not be completed.';
+  };
+
+  const { data: submitted, error: submitError } = await supabase.functions.invoke('ntwrkh-ai-queue', {
+    body: { mode: 'submit', action, payload, requestId },
+  });
+  if (submitError) throw new Error(await readFunctionError(submitError));
+  if (!submitted?.jobId) throw new Error(submitted?.error || 'NTWRKH could not queue this request.');
+
+  // A worker claims one job at a time. Polling lets the UI wait safely while
+  // other jobs for this account finish first or a temporary failure is retried.
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    const { error: workerError } = await supabase.functions.invoke('ntwrkh-ai-worker', {
+      body: {},
+    });
+    if (workerError) throw new Error(await readFunctionError(workerError));
+
+    const { data: statusData, error: statusError } = await supabase.functions.invoke('ntwrkh-ai-queue', {
+      body: { mode: 'status', jobId: submitted.jobId },
+    });
+    if (statusError) throw new Error(await readFunctionError(statusError));
+    const job = statusData?.job;
+    if (!job) throw new Error('NTWRKH could not find the queued AI request.');
+    if (job.status === 'completed') return job.result as T;
+    if (job.status === 'failed') throw new Error(job.error_message || 'NTWRKH could not complete this AI request.');
+
+    await new Promise((resolve) => setTimeout(resolve, job.status === 'retrying' ? 5000 : 1500));
   }
-  if (data?.error) throw new Error(data.error);
-  return data as T;
+
+  throw new Error('Your request is still processing. Please try again in a moment; it has not been discarded.');
 }
 
 async function getOrCreateConversation(userId: string): Promise<string> {

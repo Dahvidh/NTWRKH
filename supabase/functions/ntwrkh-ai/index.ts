@@ -56,7 +56,7 @@ const tiktokSchema = {
 };
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   try {
     const authorization = req.headers.get("Authorization");
@@ -70,9 +70,17 @@ Deno.serve(async (req) => {
     const input = await req.json();
     const action = String(input.action || "");
     if (action === "analyze") {
-      const prompt = `Analyse this creator content accurately. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(input.caption || "(none)")}`;
+      const prompt = `Analyse this creator content accurately. Use the supplied media frames as visual evidence where present. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(input.caption || "(none)")}`;
       const content: any[] = [{ type: "text", text: prompt }];
-      if (input.imageData && input.imageMimeType) content.push({ type: "image_url", image_url: { url: `data:${input.imageMimeType};base64,${input.imageData}` } });
+      if (input.imageData && input.imageMimeType) {
+        content.push({ type: "image_url", image_url: { url: `data:${input.imageMimeType};base64,${input.imageData}` } });
+      } else if (Array.isArray(input.imageFrames)) {
+        for (const frame of input.imageFrames.slice(0, 3)) {
+          if (typeof frame === "string" && frame.length > 0) {
+            content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${frame}` } });
+          }
+        }
+      }
       const raw = await openAI([{ role: "user", content }], "content_analysis", analysisSchema);
       return json({ analysis: JSON.parse(raw) });
     }
@@ -86,7 +94,7 @@ Deno.serve(async (req) => {
       return json({ reply: raw });
     }
     if (action === "distribution") {
-      const raw = await openAI([{ role: "system", content: "Build a practical content distribution plan. Recommend channels only where there is a plausible audience fit. Do not claim live trend or account analytics access." }, { role: "user", content: `Niche: ${input.niche || "General"}\nTopic: ${input.topic || "Not supplied"}\nContent: ${input.content || "Not supplied"}` }], "distribution_plan", planSchema);
+      const raw = await openAI([{ role: "system", content: "Build a practical content distribution plan. Recommend channels only where there is a plausible audience fit. Do not claim live trend or account analytics access." }, { role: "user", content: `Niche: ${input.niche || "General"}\nTopic: ${input.topic || "Not supplied"}\nContent: ${input.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(input.hashtags || [])}\nExisting mentions: ${JSON.stringify(input.mentions || [])}` }], "distribution_plan", planSchema);
       return json({ plan: JSON.parse(raw) });
     }
     if (action === "tiktok-plan") {

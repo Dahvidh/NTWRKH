@@ -40,7 +40,7 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       scopes: 'openid email profile https://www.googleapis.com/auth/youtube.readonly',
-      redirectTo: `${window.location.origin}/`,
+      redirectTo: 'https://ntwrkh.vercel.app/',
       queryParams: { access_type: 'offline', prompt: 'consent' },
     },
   });

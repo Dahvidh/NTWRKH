@@ -41,6 +41,7 @@ import {
   WandSparkles,
   X,
   Zap,
+  ShieldCheck,
 } from 'lucide-react';
 import { PlayCircle } from 'lucide-react';
 
@@ -100,6 +101,7 @@ type View =
   | 'Distribution planner'
   | 'Analytics'
   | 'AI activity'
+  | 'Admin finance'
   | 'YouTube Discover'
   | 'TikTok Creator Lab'
   | 'TikTok account'
@@ -125,6 +127,7 @@ const sampleTopics = [
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [profile, setProfile] = useState<Profile>({});
   const [posts, setPosts] = useState<Post[]>([]);
   const [view, setView] = useState<View>('NTWRKH assistant');
@@ -175,6 +178,8 @@ function App() {
     setProfileDraft(nextProfile);
     setPosts(nextPosts);
     setChatMessages(nextMessages);
+    const { error: adminError } = await supabase.rpc('ntwrkh_get_admin_finance_summary');
+    setIsAdmin(!adminError);
     setAudienceNiche(nextProfile.niche || '');
     if (!nextProfile.userType || !nextProfile.niche) setView('My profile');
   }
@@ -237,7 +242,7 @@ function App() {
 
   async function signOut() {
     try { await supabaseSignOut(); }
-    finally { setUser(null); setPosts([]); setProfile({}); setChatMessages([]); }
+    finally { setUser(null); setIsAdmin(false); setPosts([]); setProfile({}); setChatMessages([]); }
   }
 
   async function saveProfile() {
@@ -547,7 +552,7 @@ function App() {
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <nav>
-          {nav.map(item => {
+          {(isAdmin ? [...nav, { label: 'Admin finance' as View, icon: ShieldCheck }] : nav).map(item => {
             const Icon = item.icon;
             return (
               <button
@@ -680,6 +685,9 @@ function App() {
           )}
           {view === 'AI activity' && user && (
             <AIActivity userId={user.userId} />
+          )}
+          {view === 'Admin finance' && isAdmin && (
+            <AdminFinanceDashboard />
           )}
           {view === 'Overview' && (
             <Overview profile={profile} posts={ownPosts} setView={setView} />
@@ -887,6 +895,107 @@ function AIActivity({ userId }: { userId: string }) {
           />
         )}
       </div>
+    </>
+  );
+}
+
+
+type AdminFinanceSummary = {
+  monthStart: string;
+  budgetUsd: number;
+  perRequestReservationUsd: number;
+  estimatedSpendUsd: number;
+  outstandingReservationsUsd: number;
+  committedUsd: number;
+  remainingUsd: number;
+  utilizationPercent: number;
+  alertLevel: string;
+  alertThresholds: number[];
+  providerBreakdown: { provider: string; model: string; requests: number; estimatedSpendUsd: number; reservedUsd: number; committedUsd: number }[];
+  userBreakdown: { userId: string; email: string; requests: number; estimatedSpendUsd: number; reservedUsd: number; committedUsd: number }[];
+  dailyTrend: { date: string; committedUsd: number }[];
+};
+
+function AdminFinanceDashboard() {
+  const [summary, setSummary] = useState<AdminFinanceSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const { data, error: rpcError } = await supabase.rpc('ntwrkh_get_admin_finance_summary');
+      if (rpcError) throw rpcError;
+      if (!data) throw new Error('The finance summary was empty.');
+      setSummary(data as AdminFinanceSummary);
+      setError('');
+    } catch (e: any) {
+      setError(e?.message || 'Could not load the admin finance summary.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const money = (value: number) => formatAICost(value);
+  const utilization = Math.min(100, Math.max(0, Number(summary?.utilizationPercent || 0)));
+  const maxDaily = Math.max(0.000001, ...(summary?.dailyTrend || []).map(d => Number(d.committedUsd || 0)));
+  const alertCopy: Record<string, string> = {
+    normal: 'Spending is below the 50% alert threshold.',
+    notice: 'NTWRKH has used at least 50% of its monthly AI budget.',
+    warning: 'NTWRKH has used at least 75% of its monthly AI budget.',
+    critical: 'NTWRKH has used at least 90% of its monthly AI budget.',
+    limit: 'The monthly AI budget limit has been reached.',
+  };
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="RESTRICTED · ADMINISTRATOR"
+        title="AI financial control."
+        subtitle="Platform-wide AI cost estimates, reservations and monthly budget monitoring. Provider invoices may differ from these estimates."
+        action={<button className="text-btn" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}{refreshing ? 'Refreshing' : 'Refresh'}</button>}
+      />
+      {error && <div className="error-box">{error}</div>}
+      {loading ? (
+        <div className="panel ai-activity-loading"><Loader2 className="spin" size={20} /> Loading restricted financial data…</div>
+      ) : summary ? (
+        <>
+          <div className={'admin-budget-alert alert-' + summary.alertLevel}>
+            <div><strong>{summary.alertLevel === 'normal' ? 'Budget status: healthy' : 'Budget alert'}</strong><span>{alertCopy[summary.alertLevel] || 'Review current AI budget usage.'}</span></div>
+            <strong>{utilization.toFixed(2)}%</strong>
+          </div>
+          <div className="admin-finance-grid">
+            <div className="panel admin-finance-card"><span>Monthly AI budget</span><strong>{money(summary.budgetUsd)}</strong><small>Resets at the start of each UTC month</small></div>
+            <div className="panel admin-finance-card"><span>Estimated spend</span><strong>{money(summary.estimatedSpendUsd)}</strong><small>Recorded estimated provider usage</small></div>
+            <div className="panel admin-finance-card"><span>Outstanding reservations</span><strong>{money(summary.outstandingReservationsUsd)}</strong><small>Held amounts not reconciled to estimates</small></div>
+            <div className="panel admin-finance-card"><span>Remaining budget</span><strong>{money(summary.remainingUsd)}</strong><small>After estimated spend and reservations</small></div>
+          </div>
+          <div className="panel admin-budget-panel">
+            <div className="panel-head"><div><h3>Monthly budget utilization</h3><p>{money(summary.committedUsd)} committed of {money(summary.budgetUsd)}</p></div><strong>{utilization.toFixed(1)}%</strong></div>
+            <div className="admin-budget-track"><div style={{ width: utilization + '%' }} /></div>
+            <div className="admin-thresholds">{(summary.alertThresholds || [50,75,90,100]).map(n => <span key={n} className={utilization >= n ? 'reached' : ''}>{n}% {utilization >= n ? 'reached' : 'alert'}</span>)}</div>
+            <p className="admin-finance-note">Each new request reserves {money(summary.perRequestReservationUsd)} before the provider is called. This is a reservation safeguard, not a guaranteed cap on external provider invoices.</p>
+          </div>
+          <div className="panel admin-budget-panel">
+            <div className="panel-head"><div><h3>Daily committed cost</h3><p>UTC daily totals for the current month</p></div></div>
+            <div className="admin-daily-chart">
+              {(summary.dailyTrend || []).map(day => <div className="admin-daily-column" key={day.date} title={day.date + ': ' + money(day.committedUsd)}><div className="admin-daily-bar-wrap"><div className="admin-daily-bar" style={{ height: Math.max(2, Number(day.committedUsd || 0) / maxDaily * 100) + '%' }} /></div><span>{new Date(day.date + 'T00:00:00Z').getUTCDate()}</span></div>)}
+            </div>
+          </div>
+          <div className="panel admin-budget-panel">
+            <div className="panel-head"><div><h3>Provider and model breakdown</h3><p>Requests and estimated costs this month</p></div></div>
+            {summary.providerBreakdown.length ? <div className="admin-table-wrap"><table className="admin-finance-table"><thead><tr><th>Provider</th><th>Model</th><th>Requests</th><th>Estimated</th><th>Reserved</th></tr></thead><tbody>{summary.providerBreakdown.map((item, i) => <tr key={item.provider + item.model + i}><td>{item.provider}</td><td>{item.model}</td><td>{item.requests}</td><td>{money(item.estimatedSpendUsd)}</td><td>{money(item.reservedUsd)}</td></tr>)}</tbody></table></div> : <p className="admin-finance-empty">No provider usage recorded this month.</p>}
+          </div>
+          <div className="panel admin-budget-panel">
+            <div className="panel-head"><div><h3>Usage by account</h3><p>Administrator-only view of account-level AI usage</p></div></div>
+            {summary.userBreakdown.length ? <div className="admin-table-wrap"><table className="admin-finance-table"><thead><tr><th>Account</th><th>Requests</th><th>Estimated</th><th>Reserved</th><th>Committed</th></tr></thead><tbody>{summary.userBreakdown.map(item => <tr key={item.userId}><td>{item.email}</td><td>{item.requests}</td><td>{money(item.estimatedSpendUsd)}</td><td>{money(item.reservedUsd)}</td><td>{money(item.committedUsd)}</td></tr>)}</tbody></table></div> : <p className="admin-finance-empty">No user activity recorded this month.</p>}
+          </div>
+        </>
+      ) : null}
     </>
   );
 }

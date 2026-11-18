@@ -9,6 +9,34 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
+
+function estimateAICostUSD(provider: string, model: string, inputTokens: number, outputTokens: number) {
+  const normalizedModel = model.toLowerCase();
+  let inputRate: number;
+  let outputRate: number;
+  let rateDate: string;
+  if (provider === "openai" && normalizedModel.startsWith("gpt-4.1-mini")) {
+    inputRate = 0.40; outputRate = 1.60; rateDate = "2026-11-18";
+  } else if (provider === "google" && normalizedModel.startsWith("gemini-3.8-flash")) {
+    const nextRatePeriod = new Date() >= new Date("2027-01-01T00:00:00Z");
+    inputRate = nextRatePeriod ? 1.50 : 0.75;
+    outputRate = nextRatePeriod ? 7.50 : 3.75;
+    rateDate = nextRatePeriod ? "2027-01-01" : "2026-11-18";
+  } else if (provider === "google" && normalizedModel.startsWith("gemini-3.5-flash-lite")) {
+    inputRate = 0.30; outputRate = 2.50; rateDate = "2026-11-18";
+  } else {
+    return {
+      estimated_cost_usd: null,
+      cost_estimate_basis: `No configured public token price for ${provider}/${model}`,
+    };
+  }
+  const cost = ((Math.max(0, inputTokens) * inputRate) + (Math.max(0, outputTokens) * outputRate)) / 1_000_000;
+  return {
+    estimated_cost_usd: Number(cost.toFixed(10)),
+    cost_estimate_basis: `${model}: ${inputRate}/1M input + ${outputRate}/1M output; standard published rates from ${rateDate}`,
+  };
+}
+
 const analysisSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -330,9 +358,12 @@ Deno.serve(async (req) => {
 
     try {
       const output = await callWithFallback(job.action, job.payload || {});
+      const costEstimate = estimateAICostUSD(output.provider, output.model, output.input_tokens, output.output_tokens);
       const { error: ledgerError } = await admin.from("ai_usage_ledger").update({
         status: "completed", provider: output.provider, model: output.model,
         input_tokens: output.input_tokens, output_tokens: output.output_tokens,
+        estimated_cost_usd: costEstimate.estimated_cost_usd,
+        cost_estimate_basis: costEstimate.cost_estimate_basis,
         completed_at: new Date().toISOString(),
       }).eq("user_id", jobUserId).eq("request_id", job.request_id);
       if (ledgerError) console.error("Usage ledger update failed", ledgerError.message);

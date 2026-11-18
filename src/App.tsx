@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   getSession, mapUser, signInWithGoogle, signOut as supabaseSignOut,
   loadProfile, loadPosts, loadChat, saveProfile as persistProfile,
-  createPost, uploadMedia, invokeAI, sendChat, saveAnalysis,
+  createPost, uploadMedia, invokeAI, sendChat, saveAnalysis, loadAIJobs,
 } from './lib/services';
 import { supabase } from './lib/supabase';
 import {
@@ -98,6 +98,7 @@ type View =
   | 'Audience finder'
   | 'Distribution planner'
   | 'Analytics'
+  | 'AI activity'
   | 'YouTube Discover'
   | 'TikTok Creator Lab'
   | 'TikTok account'
@@ -105,6 +106,7 @@ type View =
 
 const nav = [
   { label: 'NTWRKH assistant' as View, icon: Sparkles },
+  { label: 'AI activity' as View, icon: Activity },
   { label: 'Discover' as View, icon: Compass },
   { label: 'YouTube Discover' as View, icon: Youtube },
   { label: 'Distribution planner' as View, icon: Target },
@@ -675,6 +677,9 @@ function App() {
               finding={busy}
             />
           )}
+          {view === 'AI activity' && user && (
+            <AIActivity userId={user.userId} />
+          )}
           {view === 'Overview' && (
             <Overview profile={profile} posts={ownPosts} setView={setView} />
           )}
@@ -748,6 +753,117 @@ function App() {
         </div>
       </main>
     </div>
+  );
+}
+
+type AIJob = {
+  id: string;
+  action: string;
+  status: 'queued' | 'processing' | 'retrying' | 'completed' | 'failed';
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
+  last_error_code?: string | null;
+};
+
+function AIActivity({ userId }: { userId: string }) {
+  const [jobs, setJobs] = useState<AIJob[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      const rows = await loadAIJobs(userId);
+      setJobs(rows);
+      setError('');
+    } catch (err: any) {
+      setError(err?.message || 'Could not load AI activity.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15000);
+    return () => window.clearInterval(timer);
+  }, [userId]);
+
+  const actionLabel = (action: string) => ({
+    analyze: 'Content analysis',
+    assistant: 'NTWRKH assistant',
+    distribution: 'Distribution plan',
+    'tiktok-plan': 'TikTok creator plan',
+  }[action] || action.replace(/-/g, ' '));
+
+  const statusLabel = (status: string) => ({
+    queued: 'Queued',
+    processing: 'Processing',
+    retrying: 'Retry scheduled',
+    completed: 'Completed',
+    failed: 'Failed',
+  }[status] || status);
+
+  const dateLabel = (value?: string | null) =>
+    value ? new Date(value).toLocaleString() : '—';
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="YOUR AI WORKFLOW"
+        title="AI activity"
+        subtitle="Track requests as they move through NTWRKH. Processing continues even when you leave the app."
+        action={
+          <button className="secondary-btn" onClick={() => void refresh()} disabled={refreshing}>
+            {refreshing ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
+            {refreshing ? 'Refreshing' : 'Refresh'}
+          </button>
+        }
+      />
+      {error && <div className="error-box">{error}</div>}
+      <div className="panel ai-activity-panel">
+        <div className="panel-head">
+          <div>
+            <h3>Recent AI requests</h3>
+            <p>Latest 25 requests · refreshes automatically</p>
+          </div>
+          <span className="ai-job-count">{jobs.length} shown</span>
+        </div>
+        {loading ? (
+          <div className="ai-activity-loading"><Loader2 className="spin" size={20} /> Loading activity…</div>
+        ) : jobs.length ? (
+          <div className="ai-job-list">
+            {jobs.map(job => (
+              <div className="ai-job-row" key={job.id}>
+                <div className="ai-job-main">
+                  <strong>{actionLabel(job.action)}</strong>
+                  <span>Submitted {dateLabel(job.created_at)}</span>
+                  {job.error_message && job.status === 'failed' && (
+                    <small className="ai-job-error">{job.error_message}</small>
+                  )}
+                </div>
+                <div className="ai-job-meta">
+                  <span className={'ai-job-status status-' + job.status}>
+                    <i /> {statusLabel(job.status)}
+                  </span>
+                  <small>{job.completed_at ? 'Finished ' + dateLabel(job.completed_at) : job.started_at ? 'Started ' + dateLabel(job.started_at) : 'Waiting to start'}</small>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Activity}
+            title="No AI activity yet"
+            text="When you analyze content, create a distribution plan or chat with the assistant, your requests will appear here."
+          />
+        )}
+      </div>
+    </>
   );
 }
 

@@ -818,7 +818,7 @@ function AIActivity({ userId }: { userId: string }) {
         title="AI activity"
         subtitle="Track requests as they move through NTWRKH. Processing continues even when you leave the app."
         action={
-          <button className="secondary-btn" onClick={() => void refresh()} disabled={refreshing}>
+          <button className="text-btn" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? <Loader2 className="spin" size={15} /> : <Activity size={15} />}
             {refreshing ? 'Refreshing' : 'Refresh'}
           </button>

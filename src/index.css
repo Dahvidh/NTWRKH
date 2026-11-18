@@ -1717,3 +1717,104 @@ button:disabled {
   .page-content { padding: 22px 16px 48px; }.agent-hero { padding: 15px 2px 25px; }.agent-orbit { width: 110px; height: 130px; transform: scale(.72); transform-origin: center; margin-right: -25px; }
   .agent-hero h1 { font-size: 38px; letter-spacing: -1.5px; }.agent-hero p { font-size: 13px; }.agent-steps { gap: 10px; font-size: 10px; }.intake-panel { padding: 18px; border-radius: 18px; }.intake-heading h2 { font-size: 19px; }.intake-actions .primary-btn { width: 100%; justify-content: center; }.intelligence-grid { grid-template-columns: 1fr; }.agent-chat-heading { align-items: flex-start; flex-direction: column; margin-top: 30px; }
 }
+
+
+/* AI request activity */
+.ai-activity-panel {
+  padding: 22px;
+}
+.ai-job-count {
+  color: #9296a4;
+  font-size: 10px;
+  font-weight: 700;
+}
+.ai-job-list {
+  display: flex;
+  flex-direction: column;
+  margin-top: 14px;
+}
+.ai-job-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 22px;
+  padding: 16px 0;
+  border-top: 1px solid #eff0f4;
+}
+.ai-job-main,
+.ai-job-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.ai-job-main strong {
+  color: #292c37;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: capitalize;
+}
+.ai-job-main span,
+.ai-job-meta small {
+  color: #9699a6;
+  font-size: 10px;
+}
+.ai-job-meta {
+  align-items: flex-end;
+  flex: none;
+}
+.ai-job-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 20px;
+  padding: 5px 9px;
+  font-size: 10px;
+  font-weight: 700;
+  background: #f3f4f7;
+  color: #717686;
+}
+.ai-job-status i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ai-job-status.status-completed {
+  background: #eaf8f0;
+  color: #25865e;
+}
+.ai-job-status.status-processing {
+  background: #f0edff;
+  color: #6846e8;
+}
+.ai-job-status.status-retrying {
+  background: #fff6e8;
+  color: #a66a17;
+}
+.ai-job-status.status-failed {
+  background: #fff0f0;
+  color: #b44b4b;
+}
+.ai-job-error {
+  color: #b44b4b;
+  font-size: 10px;
+  line-height: 1.5;
+  max-width: 620px;
+}
+.ai-activity-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 34px 12px;
+  color: #858998;
+  font-size: 11px;
+}
+@media (max-width: 640px) {
+  .ai-activity-panel { padding: 16px; }
+  .ai-job-row { align-items: flex-start; gap: 10px; }
+  .ai-job-meta { text-align: right; }
+  .ai-job-main span,
+  .ai-job-meta small { font-size: 9px; }
+}

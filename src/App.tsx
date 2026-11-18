@@ -767,8 +767,13 @@ type AIJob = {
   last_error_code?: string | null;
 };
 
+function formatAICost(value: number) {
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(Number(value || 0));
+}
+
 function AIActivity({ userId }: { userId: string }) {
   const [jobs, setJobs] = useState<AIJob[]>([]);
+  const [usage, setUsage] = useState<AIUsageSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
@@ -776,8 +781,9 @@ function AIActivity({ userId }: { userId: string }) {
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const rows = await loadAIJobs(userId);
+      const [rows, usageSummary] = await Promise.all([loadAIJobs(userId), loadAIUsageSummary(userId)]);
       setJobs(rows);
+      setUsage(usageSummary);
       setError('');
     } catch (err: any) {
       setError(err?.message || 'Could not load AI activity.');
@@ -826,6 +832,22 @@ function AIActivity({ userId }: { userId: string }) {
         }
       />
       {error && <div className="error-box">{error}</div>}
+      {usage && (
+        <div className="ai-usage-grid">
+          <div className="panel ai-usage-card">
+            <span>AI spend estimate · today</span>
+            <strong>{formatAICost(usage.today.estimatedCostUsd)}</strong>
+            <small>{usage.today.completed} completed of {usage.today.requests} requests</small>
+            <small>{(usage.today.inputTokens + usage.today.outputTokens).toLocaleString()} tokens processed</small>
+          </div>
+          <div className="panel ai-usage-card">
+            <span>AI spend estimate · this month</span>
+            <strong>{formatAICost(usage.month.estimatedCostUsd)}</strong>
+            <small>{usage.month.completed} completed of {usage.month.requests} requests</small>
+            <small>{(usage.month.inputTokens + usage.month.outputTokens).toLocaleString()} tokens processed</small>
+          </div>
+        </div>
+      )}
       <div className="panel ai-activity-panel">
         <div className="panel-head">
           <div>

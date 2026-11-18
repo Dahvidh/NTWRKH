@@ -178,8 +178,12 @@ function App() {
     setProfileDraft(nextProfile);
     setPosts(nextPosts);
     setChatMessages(nextMessages);
-    const { error: adminError } = await supabase.rpc('ntwrkh_get_admin_finance_summary');
-    setIsAdmin(!adminError);
+    try {
+      const { error: adminError } = await supabase.rpc('ntwrkh_get_admin_finance_summary');
+      setIsAdmin(!adminError);
+    } catch {
+      setIsAdmin(false);
+    }
     setAudienceNiche(nextProfile.niche || '');
     if (!nextProfile.userType || !nextProfile.niche) setView('My profile');
   }

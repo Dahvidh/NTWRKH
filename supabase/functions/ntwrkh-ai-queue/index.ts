@@ -32,6 +32,12 @@ Deno.serve(async (req) => {
       return reply({ job: data });
     }
 
+    if (input.mode === "list") {
+      const { data, error } = await admin.rpc("ntwrkh_list_ai_jobs", { p_user_id: user.id });
+      if (error) throw error;
+      return reply({ jobs: data || [] });
+    }
+
     if (input.mode !== "submit") return reply({ error: "Unknown queue operation." }, 400);
     const action = String(input.action || "");
     const requestId = String(input.requestId || "");

@@ -22,6 +22,34 @@ class ProviderError extends Error {
   }
 }
 
+
+function estimateAICostUSD(provider: string, model: string, inputTokens: number, outputTokens: number) {
+  const normalizedModel = model.toLowerCase();
+  let inputRate: number;
+  let outputRate: number;
+  let rateDate: string;
+  if (provider === "openai" && normalizedModel.startsWith("gpt-4.1-mini")) {
+    inputRate = 0.40; outputRate = 1.60; rateDate = "2026-11-18";
+  } else if (provider === "google" && normalizedModel.startsWith("gemini-3.8-flash")) {
+    const nextRatePeriod = new Date() >= new Date("2027-01-01T00:00:00Z");
+    inputRate = nextRatePeriod ? 1.50 : 0.75;
+    outputRate = nextRatePeriod ? 7.50 : 3.75;
+    rateDate = nextRatePeriod ? "2027-01-01" : "2026-11-18";
+  } else if (provider === "google" && normalizedModel.startsWith("gemini-3.5-flash-lite")) {
+    inputRate = 0.30; outputRate = 2.50; rateDate = "2026-11-18";
+  } else {
+    return {
+      estimated_cost_usd: null,
+      cost_estimate_basis: `No configured public token price for ${provider}/${model}`,
+    };
+  }
+  const cost = ((Math.max(0, inputTokens) * inputRate) + (Math.max(0, outputTokens) * outputRate)) / 1_000_000;
+  return {
+    estimated_cost_usd: Number(cost.toFixed(10)),
+    cost_estimate_basis: `${model}: ${inputRate}/1M input + ${outputRate}/1M output; standard published rates from ${rateDate}`,
+  };
+}
+
 const analysisSchema = {
   type: "object", additionalProperties: false,
   properties: {
@@ -107,9 +135,12 @@ async function trackAIRequest(
 
   try {
     const result = await work();
+    const costEstimate = estimateAICostUSD("openai", result.model, result.usage.input_tokens, result.usage.output_tokens);
     const { error: updateError } = await admin.from("ai_usage_ledger").update({
       status: "completed", provider: "openai", model: result.model,
       input_tokens: result.usage.input_tokens, output_tokens: result.usage.output_tokens,
+      estimated_cost_usd: costEstimate.estimated_cost_usd,
+      cost_estimate_basis: costEstimate.cost_estimate_basis,
       completed_at: new Date().toISOString(),
     }).eq("user_id", userId).eq("request_id", requestId);
     if (updateError) console.error("Could not finalize AI usage record", updateError.message);

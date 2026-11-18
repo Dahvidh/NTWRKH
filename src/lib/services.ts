@@ -17,6 +17,17 @@ export type Analysis = {
 export type Post = { id: string; ownerId: string; caption: string; topic?: string; niche?: string; hashtags?: string[]; analysis?: Analysis; createdAt: string; visibility?: string; mediaUrl?: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string; createdAt?: string };
 
+export type AIJob = {
+  id: string;
+  action: string;
+  status: 'queued' | 'processing' | 'retrying' | 'completed' | 'failed';
+  created_at: string;
+  started_at?: string | null;
+  completed_at?: string | null;
+  error_message?: string | null;
+  last_error_code?: string | null;
+};
+
 export function mapUser(user: SupabaseUser) {
   const metadata = user.user_metadata || {};
   return { userId: user.id, name: metadata.full_name || metadata.name || user.email || 'Creator', picture: metadata.avatar_url || metadata.picture || undefined };
@@ -181,6 +192,23 @@ export async function saveAnalysis(userId: string, caption: string, analysis: An
   const { error: generatedError } = await supabase.from('generated_assets').insert(generated.map(item => ({ user_id: id, analysis_id: data.id, asset_type: item.asset_type, content: item.content })));
   if (generatedError) throw generatedError;
   return data.id;
+}
+
+export async function loadAIJobs(userId: string): Promise<AIJob[]> {
+  requireUserId(userId);
+  const { data, error } = await supabase.functions.invoke('ntwrkh-ai-queue', {
+    body: { mode: 'list' },
+  });
+  if (error) {
+    const context = (error as any)?.context;
+    if (context?.json) {
+      const details = await context.json().catch(() => null);
+      if (details?.error) throw new Error(details.error);
+    }
+    throw error;
+  }
+  if (data?.error) throw new Error(data.error);
+  return Array.isArray(data?.jobs) ? data.jobs as AIJob[] : [];
 }
 
 export async function invokeAI<T>(action: string, payload: Record<string, unknown>): Promise<T> {

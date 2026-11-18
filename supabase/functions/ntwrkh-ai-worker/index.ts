@@ -89,10 +89,139 @@ async function callOpenAI(action: string, p: Record<string, any>) {
   return {
     result: action === "analyze" ? { analysis: parsed } :
       action === "distribution" || action === "tiktok-plan" ? { plan: parsed } : { reply: content },
+    provider: "openai",
     model: String(data?.model || model),
     input_tokens: Number(data?.usage?.prompt_tokens || 0),
     output_tokens: Number(data?.usage?.completion_tokens || 0),
   };
+}
+
+function toGeminiSchema(schema: any): any {
+  const types: Record<string, string> = {
+    object: "OBJECT", array: "ARRAY", string: "STRING",
+    number: "NUMBER", integer: "INTEGER", boolean: "BOOLEAN",
+  };
+  const output: any = {};
+  if (schema.type) output.type = types[schema.type] || schema.type;
+  if (schema.properties) {
+    output.properties = Object.fromEntries(
+      Object.entries(schema.properties).map(([key, value]) => [key, toGeminiSchema(value)]),
+    );
+  }
+  if (schema.required) output.required = schema.required;
+  if (schema.items) output.items = toGeminiSchema(schema.items);
+  if (schema.enum) output.enum = schema.enum;
+  return output;
+}
+
+async function callGemini(action: string, p: Record<string, any>) {
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) throw Object.assign(new Error("Gemini fallback is not configured."), { code: "GEMINI_NOT_CONFIGURED", status: 503 });
+
+  let systemInstruction = "You are NTWRKH, a practical creator content and distribution assistant. Be accurate, specific, and honest. Never invent live trends, account analytics, or performance data.";
+  let contents: any[] = [];
+  let schema: any;
+  if (action === "analyze") {
+    const parts: any[] = [{
+      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
+    }];
+    if (p.imageData && p.imageMimeType) {
+      parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
+    } else if (Array.isArray(p.imageFrames)) {
+      for (const frame of p.imageFrames.slice(0, 3)) {
+        if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
+      }
+    }
+    contents = [{ role: "user", parts }];
+    schema = analysisSchema;
+  } else if (action === "assistant") {
+    const history = Array.isArray(p.history) ? p.history.slice(-16) : [];
+    contents = [
+      ...history.map((m: any) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: String(m.content || "") }],
+      })),
+      { role: "user", parts: [{ text: String(p.message || "") }] },
+    ];
+  } else if (action === "distribution") {
+    systemInstruction = "Build a practical content distribution plan. Recommend channels only where there is a plausible audience fit. Do not claim live trend or account analytics access.";
+    contents = [{
+      role: "user",
+      parts: [{ text: `Niche: ${p.niche || "General"}\nTopic: ${p.topic || "Not supplied"}\nContent: ${p.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(p.hashtags || [])}\nExisting mentions: ${JSON.stringify(p.mentions || [])}` }],
+    }];
+    schema = planSchema;
+  } else if (action === "tiktok-plan") {
+    systemInstruction = "Create an actionable TikTok creator strategy. Do not present hashtags or search phrases as live trend data.";
+    contents = [{
+      role: "user",
+      parts: [{ text: `Niche: ${p.niche}\nAudience: ${p.audience || "Not specified"}\nGoal: ${p.goal}\nFormat: ${p.format}\nRegion: ${p.region || "Not specified"}` }],
+    }];
+    schema = tiktokSchema;
+  } else {
+    throw Object.assign(new Error("Unsupported queued action."), { code: "UNSUPPORTED_ACTION", status: 400 });
+  }
+
+  const model = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+  const generationConfig: Record<string, unknown> = { maxOutputTokens: 4096 };
+  if (schema) {
+    generationConfig.responseMimeType = "application/json";
+    generationConfig.responseJsonSchema = toGeminiSchema(schema);
+  }
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": key, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      generationConfig,
+    }),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = String(data?.error?.message || "Gemini could not complete this request.");
+    throw Object.assign(new Error(message), {
+      code: String(data?.error?.status || "GEMINI_PROVIDER_ERROR"),
+      status: response.status,
+      retryable: response.status >= 500 || response.status === 429,
+    });
+  }
+  const content = (data?.candidates?.[0]?.content?.parts || [])
+    .map((part: any) => typeof part.text === "string" ? part.text : "")
+    .join("").trim();
+  if (!content) throw Object.assign(new Error("Gemini returned an empty response."), { code: "GEMINI_EMPTY_RESPONSE", status: 502, retryable: true });
+  const parsed = schema ? JSON.parse(content) : content;
+  return {
+    result: action === "analyze" ? { analysis: parsed } :
+      action === "distribution" || action === "tiktok-plan" ? { plan: parsed } : { reply: content },
+    provider: "google",
+    model: String(data?.modelVersion || model),
+    input_tokens: Number(data?.usageMetadata?.promptTokenCount || 0),
+    output_tokens: Number(data?.usageMetadata?.candidatesTokenCount || 0),
+  };
+}
+
+async function callWithFallback(action: string, payload: Record<string, any>) {
+  try {
+    return await callOpenAI(action, payload);
+  } catch (openAIError: any) {
+    const canFallback = openAIError?.code === "AI_NOT_CONFIGURED"
+      || openAIError?.code === "AI_PROVIDER_BILLING_LIMIT"
+      || openAIError?.retryable === true
+      || openAIError?.status === 429
+      || Number(openAIError?.status) >= 500;
+    if (!canFallback) throw openAIError;
+    try {
+      return await callGemini(action, payload);
+    } catch (geminiError: any) {
+      if (geminiError?.code === "GEMINI_NOT_CONFIGURED") throw openAIError;
+      console.error("Gemini fallback failed", geminiError?.code || geminiError?.message);
+      throw Object.assign(new Error("Both AI providers are currently unavailable. Please try again shortly."), {
+        code: "AI_PROVIDERS_UNAVAILABLE",
+        status: 503,
+        retryable: geminiError?.retryable === true,
+      });
+    }
+  }
 }
 
 Deno.serve(async (req) => {
@@ -156,9 +285,9 @@ Deno.serve(async (req) => {
     }
 
     try {
-      const output = await callOpenAI(job.action, job.payload || {});
+      const output = await callWithFallback(job.action, job.payload || {});
       const { error: ledgerError } = await admin.from("ai_usage_ledger").update({
-        status: "completed", provider: "openai", model: output.model,
+        status: "completed", provider: output.provider, model: output.model,
         input_tokens: output.input_tokens, output_tokens: output.output_tokens,
         completed_at: new Date().toISOString(),
       }).eq("user_id", jobUserId).eq("request_id", job.request_id);

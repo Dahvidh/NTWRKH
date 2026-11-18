@@ -97,7 +97,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
   } else throw Object.assign(new Error("Unsupported queued action."), { code: "UNSUPPORTED_ACTION", status: 400 });
 
   const model = Deno.env.get("OPENAI_MODEL") || "gpt-4.1-mini";
-  const body: any = { model, messages, temperature: 0.7 };
+  const body: any = { model, messages, temperature: 0.7, max_tokens: 4096 };
   if (schemaName) body.response_format = { type: "json_schema", json_schema: { name: schemaName, strict: true, schema } };
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body),

@@ -346,7 +346,6 @@ Deno.serve(async (req) => {
     const { data: reservation, error: reserveError } = await admin.rpc("reserve_ai_request", {
       p_user_id: jobUserId, p_request_id: job.request_id, p_action: job.action,
       p_user_daily_limit: userLimit, p_global_daily_limit: globalLimit,
-      p_monthly_budget_usd: 99.90, p_request_reservation_usd: 0.10,
     });
     if (reserveError) throw reserveError;
     if (!reservation?.allowed && reservation?.reason !== "duplicate_request") {

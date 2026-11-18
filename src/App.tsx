@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getSession, mapUser, signInWithGoogle, signOut as supabaseSignOut,
   loadProfile, loadPosts, loadChat, saveProfile as persistProfile,
@@ -773,7 +773,7 @@ function AIActivity({ userId }: { userId: string }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const rows = await loadAIJobs(userId);
@@ -785,28 +785,29 @@ function AIActivity({ userId }: { userId: string }) {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), 15000);
     return () => window.clearInterval(timer);
-  }, [userId]);
+  }, [refresh]);
 
-  const actionLabel = (action: string) => ({
+  const actionLabels: Record<string, string> = {
     analyze: 'Content analysis',
     assistant: 'NTWRKH assistant',
     distribution: 'Distribution plan',
     'tiktok-plan': 'TikTok creator plan',
-  }[action] || action.replace(/-/g, ' '));
-
-  const statusLabel = (status: string) => ({
+  };
+  const statusLabels: Record<string, string> = {
     queued: 'Queued',
     processing: 'Processing',
     retrying: 'Retry scheduled',
     completed: 'Completed',
     failed: 'Failed',
-  }[status] || status);
+  };
+  const actionLabel = (action: string) => actionLabels[action] || action.replace(/-/g, ' ');
+  const statusLabel = (status: string) => statusLabels[status] || status;
 
   const dateLabel = (value?: string | null) =>
     value ? new Date(value).toLocaleString() : '—';

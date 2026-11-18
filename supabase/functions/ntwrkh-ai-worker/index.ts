@@ -111,7 +111,7 @@ function toGeminiSchema(schema: any): any {
   return output;
 }
 
-async function callGemini(action: string, p: Record<string, any>) {
+async function callGemini(action: string, p: Record<string, any>, modelOverride?: string) {
   const key = Deno.env.get("GEMINI_API_KEY");
   if (!key) throw Object.assign(new Error("Gemini fallback is not configured."), { code: "GEMINI_NOT_CONFIGURED", status: 503 });
 
@@ -159,7 +159,7 @@ async function callGemini(action: string, p: Record<string, any>) {
     throw Object.assign(new Error("Unsupported queued action."), { code: "UNSUPPORTED_ACTION", status: 400 });
   }
 
-  const model = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+  const model = modelOverride || Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
   const generationConfig: Record<string, unknown> = { maxOutputTokens: 4096 };
   if (schema) {
     generationConfig.responseMimeType = "application/json";
@@ -198,6 +198,31 @@ async function callGemini(action: string, p: Record<string, any>) {
   };
 }
 
+async function callGeminiResilient(action: string, payload: Record<string, any>) {
+  const primaryModel = Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
+  try {
+    return await callGemini(action, payload, primaryModel);
+  } catch (primaryError: any) {
+    const shouldTrySecondary = primaryError?.retryable === true
+      || primaryError?.status === 429
+      || primaryError?.status === 503
+      || primaryError instanceof TypeError;
+    const secondaryModel = "gemini-3.5-flash-lite";
+    if (!shouldTrySecondary || primaryModel === secondaryModel) throw primaryError;
+    console.warn("Primary Gemini model unavailable; trying secondary model", primaryModel, secondaryModel);
+    try {
+      return await callGemini(action, payload, secondaryModel);
+    } catch (secondaryError: any) {
+      console.error("Secondary Gemini model failed", secondaryError?.code || secondaryError?.message);
+      throw Object.assign(new Error("Gemini models are temporarily unavailable. Please try again shortly."), {
+        code: "GEMINI_MODELS_UNAVAILABLE",
+        status: Number(secondaryError?.status) || 503,
+        retryable: secondaryError?.retryable === true || secondaryError?.status === 429 || secondaryError?.status === 503,
+      });
+    }
+  }
+}
+
 async function callWithFallback(action: string, payload: Record<string, any>) {
   try {
     return await callOpenAI(action, payload);
@@ -212,7 +237,7 @@ async function callWithFallback(action: string, payload: Record<string, any>) {
       || Number(openAIError?.status) >= 500;
     if (!canFallback) throw openAIError;
     try {
-      return await callGemini(action, payload);
+      return await callGeminiResilient(action, payload);
     } catch (geminiError: any) {
       if (geminiError?.code === "GEMINI_NOT_CONFIGURED") throw openAIError;
       console.error("Gemini fallback failed", geminiError?.code || geminiError?.message);
@@ -254,7 +279,7 @@ Deno.serve(async (req) => {
   const requestBody = await req.json().catch(() => ({}));
   if (isCron && requestBody?.mode === "test-gemini") {
     try {
-      const test = await callGemini("assistant", {
+      const test = await callGeminiResilient("assistant", {
         message: "Reply with exactly: NTWRKH Gemini connection test successful.",
       });
       return json({ tested: true, configured: true, successful: true, provider: test.provider, model: test.model });

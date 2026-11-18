@@ -226,9 +226,12 @@ export async function loadAIJobs(userId: string): Promise<AIJob[]> {
 
 export async function loadAIUsageSummary(userId: string): Promise<AIUsageSummary> {
   requireUserId(userId);
-  const { data, error } = await supabase.rpc('ntwrkh_get_ai_usage_summary');
+  const { data, error } = await supabase.functions.invoke('ntwrkh-ai-queue', {
+    body: { mode: 'usage' },
+  });
   if (error) throw error;
-  return data as AIUsageSummary;
+  if (data?.error) throw new Error(data.error);
+  return data.summary as AIUsageSummary;
 }
 
 export async function invokeAI<T>(action: string, payload: Record<string, unknown>): Promise<T> {

@@ -765,17 +765,6 @@ function App() {
   );
 }
 
-type AIJob = {
-  id: string;
-  action: string;
-  status: 'queued' | 'processing' | 'retrying' | 'completed' | 'failed';
-  created_at: string;
-  started_at?: string | null;
-  completed_at?: string | null;
-  error_message?: string | null;
-  last_error_code?: string | null;
-};
-
 function formatAICost(value: number) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 4 }).format(Number(value || 0));
 }

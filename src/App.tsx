@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getSession, mapUser, signInWithGoogle, signOut as supabaseSignOut,
   loadProfile, loadPosts, loadChat, saveProfile as persistProfile,
-  createPost, uploadMedia, invokeAI, sendChat, saveAnalysis, loadAIJobs,
+  createPost, uploadMedia, invokeAI, sendChat, saveAnalysis, loadAIJobs, loadAIUsageSummary,
 } from './lib/services';
+import type { AIJob, AIUsageSummary } from './lib/services';
 import { supabase } from './lib/supabase';
 import {
   Activity,

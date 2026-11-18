@@ -99,14 +99,27 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
   const authorization = req.headers.get("Authorization");
-  if (!authorization) return json({ error: "Authentication required" }, 401);
+  const cronTimestamp = req.headers.get("x-ntwrkh-timestamp");
+  const cronSignature = req.headers.get("x-ntwrkh-signature");
+  const isCron = Boolean(cronTimestamp && cronSignature);
   const url = Deno.env.get("SUPABASE_URL")!;
   const anon = Deno.env.get("SUPABASE_ANON_KEY")!;
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-  const userClient = createClient(url, anon, { global: { headers: { Authorization: authorization } } });
   const admin = createClient(url, service, { auth: { persistSession: false } });
-  const { data: { user }, error: authError } = await userClient.auth.getUser();
-  if (authError || !user) return json({ error: "Your session has expired. Please sign in again." }, 401);
+
+  let userId: string | null = null;
+  if (isCron) {
+    const { data: allowed, error: signatureError } = await admin.rpc("ntwrkh_verify_cron_worker_signature", {
+      p_timestamp: cronTimestamp, p_signature: cronSignature,
+    });
+    if (signatureError || allowed !== true) return json({ error: "Scheduled worker authentication failed." }, 401);
+  } else {
+    if (!authorization) return json({ error: "Authentication required" }, 401);
+    const userClient = createClient(url, anon, { global: { headers: { Authorization: authorization } } });
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
+    if (authError || !user) return json({ error: "Your session has expired. Please sign in again." }, 401);
+    userId = user.id;
+  }
 
   const workerId = crypto.randomUUID();
   let slotId: number | null = null;
@@ -118,15 +131,19 @@ Deno.serve(async (req) => {
     slotId = acquiredSlot === null ? null : Number(acquiredSlot);
     if (!slotId) return json({ processed: false, capacity: true, message: "All AI workers are busy. Your request remains safely queued." }, 202);
 
-    const { data: jobs, error: claimError } = await admin.rpc("ntwrkh_claim_next_ai_job", { p_user_id: user.id });
+    const { data: jobs, error: claimError } = isCron
+      ? await admin.rpc("ntwrkh_claim_next_ai_job_global")
+      : await admin.rpc("ntwrkh_claim_next_ai_job", { p_user_id: userId });
     if (claimError) throw claimError;
     const job = Array.isArray(jobs) ? jobs[0] : jobs;
     if (!job) return json({ processed: false, message: "No queued AI jobs are ready." });
+    const jobUserId = String(job.user_id || userId || "");
+    if (!jobUserId) throw new Error("Claimed AI job has no owner.");
 
     const userLimit = Math.max(1, Number(Deno.env.get("AI_MAX_REQUESTS_PER_USER_PER_DAY") || 30));
     const globalLimit = Math.max(1, Number(Deno.env.get("AI_MAX_REQUESTS_PER_DAY") || 1000));
     const { data: reservation, error: reserveError } = await admin.rpc("reserve_ai_request", {
-      p_user_id: user.id, p_request_id: job.request_id, p_action: job.action,
+      p_user_id: jobUserId, p_request_id: job.request_id, p_action: job.action,
       p_user_daily_limit: userLimit, p_global_daily_limit: globalLimit,
     });
     if (reserveError) throw reserveError;
@@ -144,7 +161,7 @@ Deno.serve(async (req) => {
         status: "completed", provider: "openai", model: output.model,
         input_tokens: output.input_tokens, output_tokens: output.output_tokens,
         completed_at: new Date().toISOString(),
-      }).eq("user_id", user.id).eq("request_id", job.request_id);
+      }).eq("user_id", jobUserId).eq("request_id", job.request_id);
       if (ledgerError) console.error("Usage ledger update failed", ledgerError.message);
       await admin.rpc("ntwrkh_finish_ai_job", { p_job_id: job.id, p_result: output.result });
       return json({ processed: true, jobId: job.id, status: "completed", result: output.result });
@@ -155,7 +172,7 @@ Deno.serve(async (req) => {
       await admin.from("ai_usage_ledger").update({
         status: code === "AI_PROVIDER_BILLING_LIMIT" ? "provider_unavailable" : "failed",
         error_code: code, completed_at: new Date().toISOString(),
-      }).eq("user_id", user.id).eq("request_id", job.request_id);
+      }).eq("user_id", jobUserId).eq("request_id", job.request_id);
       const { data: newStatus } = await admin.rpc("ntwrkh_fail_ai_job", {
         p_job_id: job.id, p_error_message: message, p_error_code: code, p_retryable: retryable,
       });

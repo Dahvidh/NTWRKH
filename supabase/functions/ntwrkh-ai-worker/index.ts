@@ -346,12 +346,15 @@ Deno.serve(async (req) => {
     const { data: reservation, error: reserveError } = await admin.rpc("reserve_ai_request", {
       p_user_id: jobUserId, p_request_id: job.request_id, p_action: job.action,
       p_user_daily_limit: userLimit, p_global_daily_limit: globalLimit,
+      p_monthly_budget_usd: 99.90, p_request_reservation_usd: 0.10,
     });
     if (reserveError) throw reserveError;
     if (!reservation?.allowed && reservation?.reason !== "duplicate_request") {
       const message = reservation?.reason === "user_daily_limit"
         ? "You've reached today's AI usage limit. Please try again tomorrow."
-        : "NTWRKH is at its current daily AI capacity. Your content is safe; please try again later.";
+        : reservation?.reason === "monthly_budget_limit"
+          ? "NTWRKH has reached its monthly AI budget. AI requests will be available again next month."
+          : "NTWRKH is at its current daily AI capacity. Your content is safe; please try again later.";
       await admin.rpc("ntwrkh_fail_ai_job", { p_job_id: job.id, p_error_message: message, p_error_code: reservation?.reason || "AI_CAPACITY_LIMIT", p_retryable: false });
       return json({ processed: true, jobId: job.id, status: "failed", error: message });
     }
@@ -363,6 +366,7 @@ Deno.serve(async (req) => {
         status: "completed", provider: output.provider, model: output.model,
         input_tokens: output.input_tokens, output_tokens: output.output_tokens,
         estimated_cost_usd: costEstimate.estimated_cost_usd,
+        reserved_cost_usd: costEstimate.estimated_cost_usd ?? 0.10,
         cost_estimate_basis: costEstimate.cost_estimate_basis,
         completed_at: new Date().toISOString(),
       }).eq("user_id", jobUserId).eq("request_id", job.request_id);

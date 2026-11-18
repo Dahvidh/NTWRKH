@@ -251,6 +251,24 @@ Deno.serve(async (req) => {
     userId = user.id;
   }
 
+  const requestBody = await req.json().catch(() => ({}));
+  if (isCron && requestBody?.mode === "test-gemini") {
+    try {
+      const test = await callGemini("assistant", {
+        message: "Reply with exactly: NTWRKH Gemini connection test successful.",
+      });
+      return json({ tested: true, configured: true, successful: true, provider: test.provider, model: test.model });
+    } catch (error: any) {
+      return json({
+        tested: true,
+        configured: Boolean(Deno.env.get("GEMINI_API_KEY")),
+        successful: false,
+        errorCode: String(error?.code || "GEMINI_TEST_FAILED"),
+        error: String(error?.message || "Gemini connection test failed."),
+      }, Number(error?.status) >= 400 && Number(error?.status) < 600 ? Number(error.status) : 503);
+    }
+  }
+
   const workerId = crypto.randomUUID();
   let slotId: number | null = null;
   try {

@@ -118,7 +118,6 @@ async function trackAIRequest(
   const { data: reservation, error: reserveError } = await admin.rpc("reserve_ai_request", {
     p_user_id: userId, p_request_id: requestId, p_action: action,
     p_user_daily_limit: userLimit, p_global_daily_limit: globalLimit,
-    p_monthly_budget_usd: 99.90, p_request_reservation_usd: 0.10,
   });
   if (reserveError) {
     console.error("AI usage reservation failed", reserveError.message);

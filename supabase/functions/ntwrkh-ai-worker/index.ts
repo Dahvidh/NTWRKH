@@ -97,12 +97,8 @@ async function callOpenAI(action: string, p: Record<string, any>) {
 }
 
 function toGeminiSchema(schema: any): any {
-  const types: Record<string, string> = {
-    object: "OBJECT", array: "ARRAY", string: "STRING",
-    number: "NUMBER", integer: "INTEGER", boolean: "BOOLEAN",
-  };
   const output: any = {};
-  if (schema.type) output.type = types[schema.type] || schema.type;
+  if (schema.type) output.type = schema.type;
   if (schema.properties) {
     output.properties = Object.fromEntries(
       Object.entries(schema.properties).map(([key, value]) => [key, toGeminiSchema(value)]),
@@ -111,6 +107,7 @@ function toGeminiSchema(schema: any): any {
   if (schema.required) output.required = schema.required;
   if (schema.items) output.items = toGeminiSchema(schema.items);
   if (schema.enum) output.enum = schema.enum;
+  if (schema.additionalProperties === false) output.additionalProperties = false;
   return output;
 }
 
@@ -136,6 +133,7 @@ async function callGemini(action: string, p: Record<string, any>) {
     schema = analysisSchema;
   } else if (action === "assistant") {
     const history = Array.isArray(p.history) ? p.history.slice(-16) : [];
+    if (history[0]?.role === "assistant") history.shift();
     contents = [
       ...history.map((m: any) => ({
         role: m.role === "assistant" ? "model" : "user",
@@ -208,6 +206,9 @@ async function callWithFallback(action: string, payload: Record<string, any>) {
       || openAIError?.code === "AI_PROVIDER_BILLING_LIMIT"
       || openAIError?.retryable === true
       || openAIError?.status === 429
+      || openAIError?.status === 401
+      || openAIError?.status === 403
+      || openAIError instanceof TypeError
       || Number(openAIError?.status) >= 500;
     if (!canFallback) throw openAIError;
     try {

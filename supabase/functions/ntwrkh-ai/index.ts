@@ -83,7 +83,7 @@ async function openAI(messages: unknown[], schemaName?: string, schema?: Record<
   const key = Deno.env.get("OPENAI_API_KEY");
   if (!key) throw new ProviderError("AI service is not configured.", 503, "AI_NOT_CONFIGURED");
   const model = Deno.env.get("OPENAI_MODEL") || "gpt-4.1-mini";
-  const body: Record<string, unknown> = { model, messages, temperature: 0.7 };
+  const body: Record<string, unknown> = { model, messages, temperature: 0.7, max_tokens: 4096 };
   if (schemaName && schema) body.response_format = { type: "json_schema", json_schema: { name: schemaName, strict: true, schema } };
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" }, body: JSON.stringify(body),

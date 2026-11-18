@@ -118,6 +118,7 @@ async function trackAIRequest(
   const { data: reservation, error: reserveError } = await admin.rpc("reserve_ai_request", {
     p_user_id: userId, p_request_id: requestId, p_action: action,
     p_user_daily_limit: userLimit, p_global_daily_limit: globalLimit,
+    p_monthly_budget_usd: 99.90, p_request_reservation_usd: 0.10,
   });
   if (reserveError) {
     console.error("AI usage reservation failed", reserveError.message);
@@ -130,6 +131,9 @@ async function trackAIRequest(
     if (reservation?.reason === "user_daily_limit") {
       throw new ProviderError("You've reached today's AI usage limit. Please try again tomorrow.", 429, "USER_DAILY_LIMIT");
     }
+    if (reservation?.reason === "monthly_budget_limit") {
+      throw new ProviderError("NTWRKH has reached its monthly AI budget. AI requests will be available again next month.", 429, "MONTHLY_AI_BUDGET_LIMIT");
+    }
     throw new ProviderError("NTWRKH is at its current daily AI capacity. Your content is safe; please try again later.", 503, "PLATFORM_DAILY_LIMIT");
   }
 
@@ -140,6 +144,7 @@ async function trackAIRequest(
       status: "completed", provider: "openai", model: result.model,
       input_tokens: result.usage.input_tokens, output_tokens: result.usage.output_tokens,
       estimated_cost_usd: costEstimate.estimated_cost_usd,
+      reserved_cost_usd: costEstimate.estimated_cost_usd ?? 0.10,
       cost_estimate_basis: costEstimate.cost_estimate_basis,
       completed_at: new Date().toISOString(),
     }).eq("user_id", userId).eq("request_id", requestId);

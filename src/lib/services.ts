@@ -17,6 +17,19 @@ export type Analysis = {
 export type Post = { id: string; ownerId: string; caption: string; topic?: string; niche?: string; hashtags?: string[]; analysis?: Analysis; createdAt: string; visibility?: string; mediaUrl?: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string; createdAt?: string };
 
+export type AIUsagePeriod = {
+  requests: number;
+  completed: number;
+  estimatedCostUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+};
+export type AIUsageSummary = {
+  today: AIUsagePeriod;
+  month: AIUsagePeriod;
+  providerBreakdown: { provider: string; model: string; requests: number; estimatedCostUsd: number; inputTokens: number; outputTokens: number }[];
+};
+
 export type AIJob = {
   id: string;
   action: string;
@@ -209,6 +222,13 @@ export async function loadAIJobs(userId: string): Promise<AIJob[]> {
   }
   if (data?.error) throw new Error(data.error);
   return Array.isArray(data?.jobs) ? data.jobs as AIJob[] : [];
+}
+
+export async function loadAIUsageSummary(userId: string): Promise<AIUsageSummary> {
+  requireUserId(userId);
+  const { data, error } = await supabase.rpc('ntwrkh_get_ai_usage_summary');
+  if (error) throw error;
+  return data as AIUsageSummary;
 }
 
 export async function invokeAI<T>(action: string, payload: Record<string, unknown>): Promise<T> {

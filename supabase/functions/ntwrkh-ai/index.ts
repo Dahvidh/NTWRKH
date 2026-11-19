@@ -54,9 +54,12 @@ const analysisSchema = {
   type: "object", additionalProperties: false,
   properties: {
     topic: { type: "string" }, niche: { type: "string" }, audience: { type: "string" },
+    contentFormat: { type: "string" },
+    existingHashtags: { type: "array", items: { type: "string" } },
+    existingMentions: { type: "array", items: { type: "string" } },
     hashtags: { type: "array", items: { type: "string" } }, keywords: { type: "array", items: { type: "string" } },
     caption: { type: "string" }, recommendations: { type: "array", items: { type: "string" } },
-  }, required: ["topic", "niche", "audience", "hashtags", "keywords", "caption", "recommendations"],
+  }, required: ["topic", "niche", "audience", "contentFormat", "existingHashtags", "existingMentions", "hashtags", "keywords", "caption", "recommendations"],
 };
 const planSchema = {
   type: "object", additionalProperties: false,
@@ -193,7 +196,7 @@ Deno.serve(async (req) => {
       ? suppliedRequestId : crypto.randomUUID();
 
     if (action === "analyze") {
-      const prompt = `Analyse this creator content accurately. Use the supplied media frames as visual evidence where present. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(input.caption || "(none)")}`;
+      const prompt = `Analyse this creator content accurately. Use supplied media frames as visual evidence. Identify the content format (for example tutorial, vlog, commentary, product demo, interview, comedy, music or educational clip). Extract existing hashtags and @mentions exactly from the supplied caption/text; do not invent or infer tagged accounts. Separate existing hashtags from newly recommended hashtags. Do not invent live trends or performance data. Return topic, specific niche, likely audience, content format, existing hashtags, existing @mentions, relevant new hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(input.caption || "(none)")}`;
       const content: any[] = [{ type: "text", text: prompt }];
       if (input.imageData && input.imageMimeType) {
         content.push({ type: "image_url", image_url: { url: `data:${input.imageMimeType};base64,${input.imageData}` } });

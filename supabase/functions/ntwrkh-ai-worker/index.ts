@@ -389,7 +389,7 @@ Deno.serve(async (req) => {
     if (reserveError) throw reserveError;
     if (!reservation?.allowed && reservation?.reason !== "duplicate_request") {
       const message = reservation?.reason === "subscription_monthly_limit"
-        ? "You've reached your monthly AI request limit on the Free plan. Your allowance resets next month."
+        ? `You've reached your monthly AI request limit on the ${reservation?.plan || "Free"} plan. Your allowance resets next month.`
         : reservation?.reason === "user_daily_limit"
           ? "You've reached today's AI usage limit. Please try again tomorrow."
           : reservation?.reason === "monthly_budget_limit"

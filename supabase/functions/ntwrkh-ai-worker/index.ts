@@ -152,21 +152,24 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
   let contents: any[] = [];
   let schema: any;
   if (action === "analyze") {
-    const parts: any[] = [{
-      text: `Analyse this creator content accurately. When a video is supplied, inspect its moving visuals and listen to its original soundtrack; when image frames are supplied, use them as visual evidence; when a standalone audio file is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
-    }];
-    if (p.imageData && p.imageMimeType) {
-      parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
-    } else if (!p.videoFileUri && Array.isArray(p.imageFrames)) {
-      for (const frame of p.imageFrames.slice(0, 3)) {
-        if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
-      }
-    }
+    const prompt = `Analyse this creator content accurately. For video, inspect the moving visuals AND listen to the original audio track. Explicitly determine whether audible sound is present. If present, describe music, speech, sound effects or ambient sound even when there are no spoken words; transcribe intelligible speech faithfully, identify its language, and extract short exact quotes. Only return empty transcript, audioSummary, speechLanguage and keyQuotes when the video is genuinely silent or has no audio track. If audio cannot be determined, say so in audioSummary instead of claiming no audio was provided. For standalone audio, listen carefully. For image frames, use them as visual evidence. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}`;
+    const parts: any[] = [];
+    // Google recommends placing video before the text prompt in single-video requests.
     if (p.videoData && p.videoMimeType) {
       parts.push({ inline_data: { mime_type: p.videoMimeType, data: p.videoData } });
     } else if (p.videoFileUri && p.videoMimeType) {
       parts.push({ file_data: { mime_type: p.videoMimeType, file_uri: p.videoFileUri } });
+    } else if (p.imageData && p.imageMimeType) {
+      parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
+    } else if (Array.isArray(p.imageFrames)) {
+      for (const frame of p.imageFrames.slice(0, 3)) {
+        if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
+      }
     }
+    if (p.audioData && p.audioMimeType) {
+      parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
+    }
+    parts.push({ text: prompt });
     if (p.audioData && p.audioMimeType) {
       parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
     }
@@ -201,7 +204,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
   }
 
   const model = modelOverride || Deno.env.get("GEMINI_MODEL") || "gemini-3.8-flash";
-  const generationConfig: Record<string, unknown> = { maxOutputTokens: 4096 };
+  const generationConfig: Record<string, unknown> = { maxOutputTokens: action === "distribution" ? 1536 : action === "analyze" ? 3072 : 2048 };
   if (schema) {
     generationConfig.responseMimeType = "application/json";
     generationConfig.responseJsonSchema = toGeminiSchema(schema);
@@ -265,6 +268,8 @@ async function callGeminiResilient(action: string, payload: Record<string, any>)
 }
 
 async function callWithFallback(action: string, payload: Record<string, any>) {
+  // OpenAI billing is currently exhausted for this deployment; route distribution directly to Gemini instead of waiting for a predictable billing failure.
+  if (action === "distribution") return await callGeminiResilient(action, payload);
   // OpenAI's current chat path is text/image-only. Route original audio and
   // video through Gemini so neither soundtrack nor moving visuals are discarded.
   if (action === "analyze" && (

@@ -44,9 +44,11 @@ const analysisSchema = {
     contentFormat: { type: "string" },
     existingHashtags: { type: "array", items: { type: "string" } },
     existingMentions: { type: "array", items: { type: "string" } },
+    transcript: { type: "string" }, audioSummary: { type: "string" }, speechLanguage: { type: "string" },
+    keyQuotes: { type: "array", items: { type: "string" } },
     hashtags: { type: "array", items: { type: "string" } }, keywords: { type: "array", items: { type: "string" } },
     caption: { type: "string" }, recommendations: { type: "array", items: { type: "string" } },
-  }, required: ["topic", "niche", "audience", "contentFormat", "existingHashtags", "existingMentions", "hashtags", "keywords", "caption", "recommendations"],
+  }, required: ["topic", "niche", "audience", "contentFormat", "existingHashtags", "existingMentions", "transcript", "audioSummary", "speechLanguage", "keyQuotes", "hashtags", "keywords", "caption", "recommendations"],
 };
 const planSchema = {
   type: "object", additionalProperties: false,
@@ -76,7 +78,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
   let schemaName: string | undefined;
   let schema: any;
   if (action === "analyze") {
-    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Identify the content format (for example tutorial, vlog, commentary, product demo, interview, comedy, music or educational clip). Extract existing hashtags and @mentions exactly from the supplied caption/text; do not invent or infer tagged accounts. Separate existing hashtags from newly recommended hashtags. Do not invent live trends or performance data. Return topic, specific niche, likely audience, content format, existing hashtags, existing @mentions, relevant new hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
+    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. Use supplied media frames as visual evidence and, when audio is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
     if (p.imageData && p.imageMimeType) content.push({ type: "image_url", image_url: { url: `data:${p.imageMimeType};base64,${p.imageData}` } });
     else if (Array.isArray(p.imageFrames)) for (const frame of p.imageFrames.slice(0, 3)) if (typeof frame === "string" && frame) content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${frame}` } });
     messages = [{ role: "user", content }]; schemaName = "content_analysis"; schema = analysisSchema;
@@ -151,7 +153,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
   let schema: any;
   if (action === "analyze") {
     const parts: any[] = [{
-      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Identify the content format (for example tutorial, vlog, commentary, product demo, interview, comedy, music or educational clip). Extract existing hashtags and @mentions exactly from the supplied caption/text; do not invent or infer tagged accounts. Separate existing hashtags from newly recommended hashtags. Do not invent live trends or performance data. Return topic, specific niche, likely audience, content format, existing hashtags, existing @mentions, relevant new hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
+      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence and, when audio is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
     }];
     if (p.imageData && p.imageMimeType) {
       parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
@@ -159,6 +161,9 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
       for (const frame of p.imageFrames.slice(0, 3)) {
         if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
       }
+    }
+    if (p.audioData && p.audioMimeType) {
+      parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
     }
     contents = [{ role: "user", parts }];
     schema = analysisSchema;
@@ -255,6 +260,11 @@ async function callGeminiResilient(action: string, payload: Record<string, any>)
 }
 
 async function callWithFallback(action: string, payload: Record<string, any>) {
+  // The OpenAI chat path below is text/image-only. Never silently skip an audio
+  // attachment: audio analysis must use Gemini's native audio input path.
+  if (action === "analyze" && payload.audioData && payload.audioMimeType) {
+    return await callGeminiResilient(action, payload);
+  }
   try {
     return await callOpenAI(action, payload);
   } catch (openAIError: any) {
@@ -279,6 +289,32 @@ async function callWithFallback(action: string, payload: Record<string, any>) {
       });
     }
   }
+}
+
+async function attachAudioFromStorage(admin: ReturnType<typeof createClient>, userId: string, payload: Record<string, any>) {
+  const path = String(payload.audioStoragePath || "");
+  const mimeType = String(payload.audioMimeType || "").toLowerCase();
+  const supportedTypes = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/aac", "audio/ogg", "audio/flac", "audio/mp4", "audio/webm"]);
+  if (!path || !path.startsWith(`${userId}/`) || path.includes("..")) {
+    throw Object.assign(new Error("The uploaded audio file could not be verified."), { code: "AUDIO_ASSET_INVALID", retryable: false });
+  }
+  if (!supportedTypes.has(mimeType)) {
+    throw Object.assign(new Error("This audio format is not supported yet. Try MP3, WAV, M4A, AAC, OGG or FLAC."), { code: "AUDIO_FORMAT_UNSUPPORTED", retryable: false });
+  }
+  const { data, error } = await admin.storage.from("ntwrkh-media").download(path);
+  if (error || !data) {
+    throw Object.assign(new Error("NTWRKH could not retrieve the uploaded audio. Please upload it again."), { code: "AUDIO_ASSET_UNAVAILABLE", retryable: false });
+  }
+  if (data.size > 12 * 1024 * 1024) {
+    throw Object.assign(new Error("Audio files must be 12 MB or smaller for this first audio-analysis release."), { code: "AUDIO_FILE_TOO_LARGE", retryable: false });
+  }
+  const bytes = new Uint8Array(await data.arrayBuffer());
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  const normalizedMime = mimeType === "audio/x-wav" ? "audio/wav" : mimeType === "audio/mp3" ? "audio/mpeg" : mimeType;
+  return { ...payload, audioData: btoa(binary), audioMimeType: normalizedMime };
 }
 
 Deno.serve(async (req) => {
@@ -362,7 +398,11 @@ Deno.serve(async (req) => {
     }
 
     try {
-      const output = await callWithFallback(job.action, job.payload || {});
+      let jobPayload = job.payload || {};
+      if (job.action === "analyze" && jobPayload.audioStoragePath) {
+        jobPayload = await attachAudioFromStorage(admin, jobUserId, jobPayload);
+      }
+      const output = await callWithFallback(job.action, jobPayload);
       const costEstimate = estimateAICostUSD(output.provider, output.model, output.input_tokens, output.output_tokens);
       const { error: ledgerError } = await admin.from("ai_usage_ledger").update({
         status: "completed", provider: output.provider, model: output.model,

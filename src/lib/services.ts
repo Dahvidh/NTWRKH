@@ -193,9 +193,15 @@ export async function createPost(
 
 
 
-export async function saveAnalysis(userId: string, caption: string, analysis: Analysis) {
+export async function saveAnalysis(userId: string, caption: string, analysis: Analysis, mediaStoragePath?: string) {
   const id = requireUserId(userId);
-  const { data, error } = await supabase.from('analyses').insert({ user_id: id, input_text: caption || null, status: 'completed', analysis, completed_at: new Date().toISOString() }).select('id').single();
+  let assetId: string | null = null;
+  if (mediaStoragePath) {
+    const { data: asset, error: assetError } = await supabase.from('content_assets').select('id').eq('user_id', id).eq('storage_path', mediaStoragePath).maybeSingle();
+    if (assetError) throw assetError;
+    assetId = asset?.id || null;
+  }
+  const { data, error } = await supabase.from('analyses').insert({ user_id: id, asset_id: assetId, input_text: caption || null, status: 'completed', analysis, completed_at: new Date().toISOString() }).select('id').single();
   if (error) throw error;
   const generated = [
     { asset_type: 'caption', content: { text: analysis.caption || '' } },
@@ -204,6 +210,10 @@ export async function saveAnalysis(userId: string, caption: string, analysis: An
   ];
   const { error: generatedError } = await supabase.from('generated_assets').insert(generated.map(item => ({ user_id: id, analysis_id: data.id, asset_type: item.asset_type, content: item.content })));
   if (generatedError) throw generatedError;
+  if (assetId) {
+    const { error: assetUpdateError } = await supabase.from('content_assets').update({ status: 'analyzed' }).eq('id', assetId).eq('user_id', id);
+    if (assetUpdateError) throw assetUpdateError;
+  }
   return data.id;
 }
 

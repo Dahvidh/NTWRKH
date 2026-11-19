@@ -1551,6 +1551,7 @@ function CreateContent({
   caption,
   setCaption,
   imageName,
+  mediaReady,
   chooseImage,
   analysis,
   busy,

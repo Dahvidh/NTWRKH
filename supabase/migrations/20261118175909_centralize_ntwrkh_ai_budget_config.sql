@@ -6,7 +6,7 @@ create table if not exists private.ai_budget_config (
 );
 
 insert into private.ai_budget_config(singleton, monthly_budget_usd, per_request_reservation_usd)
-values (true, 99.90, 0.10)
+values (true, 99.99, 0.10)
 on conflict (singleton) do update
 set monthly_budget_usd = excluded.monthly_budget_usd,
     per_request_reservation_usd = excluded.per_request_reservation_usd,

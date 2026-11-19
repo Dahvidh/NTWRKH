@@ -9,6 +9,10 @@ export type Analysis = {
   contentFormat?: string;
   existingHashtags?: string[];
   existingMentions?: string[];
+  transcript?: string;
+  audioSummary?: string;
+  speechLanguage?: string;
+  keyQuotes?: string[];
   hashtags?: string[];
   keywords?: string[];
   caption?: string;
@@ -106,18 +110,21 @@ export async function uploadMedia(
 
   const isImage = file.type.startsWith('image/');
   const isVideo = file.type.startsWith('video/');
+  const isAudio = file.type.startsWith('audio/');
 
-  if (!isImage && !isVideo) {
-    throw new Error('Only image and video files are supported.');
+  if (!isImage && !isVideo && !isAudio) {
+    throw new Error('Choose an image, video or audio file.');
   }
 
-  const maxSize = isVideo ? 50 * 1024 * 1024 : 5 * 1024 * 1024;
+  const maxSize = isVideo ? 50 * 1024 * 1024 : isAudio ? 12 * 1024 * 1024 : 5 * 1024 * 1024;
 
   if (file.size > maxSize) {
     throw new Error(
       isVideo
         ? 'Video must be smaller than 50 MB.'
-        : 'Image must be smaller than 5 MB.'
+        : isAudio
+          ? 'Audio must be 12 MB or smaller.'
+          : 'Image must be smaller than 5 MB.'
     );
   }
 
@@ -141,7 +148,7 @@ export async function uploadMedia(
       storage_path: path,
       original_filename: file.name,
       mime_type: file.type,
-      media_kind: isVideo ? 'video' : 'image',
+      media_kind: isVideo ? 'video' : isAudio ? 'audio' : 'image',
       size_bytes: file.size,
       status: 'uploaded',
     })

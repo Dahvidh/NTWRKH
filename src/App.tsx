@@ -326,6 +326,8 @@ function App() {
     if (!isImage && !isVideo && !isAudio) { setError('Choose an image, video or audio file.'); return; }
     const supportedAudioTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
     if (isAudio && !supportedAudioTypes.includes(file.type.toLowerCase())) { setError('This audio format is not supported yet. Use MP3, WAV, AIFF, AAC, OGG or FLAC.'); return; }
+    const supportedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
+    if (isVideo && !supportedVideoTypes.includes(file.type.toLowerCase())) { setError('This video format is not supported yet. Use MP4, MOV or WebM.'); return; }
     if (file.size > (isVideo ? 50 : isAudio ? 12 : 5) * 1024 * 1024) { setError(isVideo ? 'Choose a video smaller than 50 MB.' : isAudio ? 'Choose audio smaller than 12 MB.' : 'Choose an image smaller than 5 MB.'); return; }
     setError('');
     setImageName(file.name);
@@ -367,6 +369,8 @@ function App() {
         caption, imageData: imageData || undefined, imageMimeType: imageMime, imageFrames: videoFrames,
         audioStoragePath: isAudioUpload ? uploadedImageUrl : undefined,
         audioMimeType: isAudioUpload ? imageMime : undefined,
+        videoStoragePath: imageMime.startsWith('video/') ? uploadedImageUrl : undefined,
+        videoMimeType: imageMime.startsWith('video/') ? imageMime : undefined,
       });
       setAnalysis(result.analysis);
       if (user?.userId) await saveAnalysis(user.userId, caption, result.analysis, uploadedImageUrl || undefined);

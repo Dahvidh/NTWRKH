@@ -41,9 +41,12 @@ const analysisSchema = {
   type: "object", additionalProperties: false,
   properties: {
     topic: { type: "string" }, niche: { type: "string" }, audience: { type: "string" },
+    contentFormat: { type: "string" },
+    existingHashtags: { type: "array", items: { type: "string" } },
+    existingMentions: { type: "array", items: { type: "string" } },
     hashtags: { type: "array", items: { type: "string" } }, keywords: { type: "array", items: { type: "string" } },
     caption: { type: "string" }, recommendations: { type: "array", items: { type: "string" } },
-  }, required: ["topic", "niche", "audience", "hashtags", "keywords", "caption", "recommendations"],
+  }, required: ["topic", "niche", "audience", "contentFormat", "existingHashtags", "existingMentions", "hashtags", "keywords", "caption", "recommendations"],
 };
 const planSchema = {
   type: "object", additionalProperties: false,
@@ -73,7 +76,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
   let schemaName: string | undefined;
   let schema: any;
   if (action === "analyze") {
-    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
+    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Identify the content format (for example tutorial, vlog, commentary, product demo, interview, comedy, music or educational clip). Extract existing hashtags and @mentions exactly from the supplied caption/text; do not invent or infer tagged accounts. Separate existing hashtags from newly recommended hashtags. Do not invent live trends or performance data. Return topic, specific niche, likely audience, content format, existing hashtags, existing @mentions, relevant new hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
     if (p.imageData && p.imageMimeType) content.push({ type: "image_url", image_url: { url: `data:${p.imageMimeType};base64,${p.imageData}` } });
     else if (Array.isArray(p.imageFrames)) for (const frame of p.imageFrames.slice(0, 3)) if (typeof frame === "string" && frame) content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${frame}` } });
     messages = [{ role: "user", content }]; schemaName = "content_analysis"; schema = analysisSchema;
@@ -148,7 +151,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
   let schema: any;
   if (action === "analyze") {
     const parts: any[] = [{
-      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Do not invent live trends or performance data. Return a concise topic, specific niche, likely audience, relevant hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
+      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence. Identify the content format (for example tutorial, vlog, commentary, product demo, interview, comedy, music or educational clip). Extract existing hashtags and @mentions exactly from the supplied caption/text; do not invent or infer tagged accounts. Separate existing hashtags from newly recommended hashtags. Do not invent live trends or performance data. Return topic, specific niche, likely audience, content format, existing hashtags, existing @mentions, relevant new hashtags, searchable keywords, an improved caption, and practical distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
     }];
     if (p.imageData && p.imageMimeType) {
       parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });

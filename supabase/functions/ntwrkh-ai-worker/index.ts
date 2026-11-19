@@ -173,9 +173,6 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
       parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
     }
     parts.push({ text: prompt });
-    if (p.audioData && p.audioMimeType) {
-      parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
-    }
     contents = [{ role: "user", parts }];
     schema = analysisSchema;
   } else if (action === "assistant") {
@@ -543,6 +540,12 @@ Deno.serve(async (req) => {
     let geminiFileName: string | null = null;
     try {
       let jobPayload = job.payload || {};
+      if (job.action === "analyze" && String(jobPayload.videoMimeType || "").startsWith("video/") && !jobPayload.videoStoragePath) {
+        throw Object.assign(
+          new Error("The original video upload is missing. Please upload the video again before analysing it."),
+          { code: "VIDEO_UPLOAD_REQUIRED", retryable: false },
+        );
+      }
       if (job.action === "analyze" && jobPayload.audioStoragePath) {
         jobPayload = await attachAudioFromStorage(admin, jobUserId, jobPayload);
       }

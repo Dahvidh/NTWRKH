@@ -541,10 +541,27 @@ Deno.serve(async (req) => {
     try {
       let jobPayload = job.payload || {};
       if (job.action === "analyze" && String(jobPayload.videoMimeType || "").startsWith("video/") && !jobPayload.videoStoragePath) {
-        throw Object.assign(
-          new Error("The original video upload is missing. Please upload the video again before analysing it."),
-          { code: "VIDEO_UPLOAD_REQUIRED", retryable: false },
-        );
+        // Older cached frontend bundles may submit the video MIME type but omit
+        // the storage path. Recover only a recent, user-owned matching upload.
+        const expectedMime = String(jobPayload.videoMimeType).toLowerCase();
+        const { data: recentVideo, error: recentVideoError } = await admin.from("content_assets")
+          .select("storage_path,mime_type,size_bytes")
+          .eq("user_id", jobUserId)
+          .eq("media_kind", "video")
+          .eq("mime_type", expectedMime)
+          .eq("status", "uploaded")
+          .gte("created_at", new Date(Date.now() - 15 * 60 * 1000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (recentVideoError || !recentVideo?.storage_path) {
+          throw Object.assign(
+            new Error("NTWRKH couldn't match this analysis to your uploaded video. Please upload it again and wait until the upload finishes."),
+            { code: "VIDEO_UPLOAD_NOT_FOUND", retryable: false },
+          );
+        }
+        jobPayload = { ...jobPayload, videoStoragePath: recentVideo.storage_path };
+        console.log("Recovered missing video path from recent authenticated upload", { jobId: job.id, userId: jobUserId });
       }
       if (job.action === "analyze" && jobPayload.audioStoragePath) {
         jobPayload = await attachAudioFromStorage(admin, jobUserId, jobPayload);

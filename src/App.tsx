@@ -335,7 +335,9 @@ function App() {
     setUploadedImageUrl('');
     setImageData('');
     setVideoFrames([]);
+    setBusy(true);
     try {
+      if (!user?.userId) throw new Error('Your session is not ready. Please sign in again before uploading media.');
       if (isImage) {
         const reader = new FileReader();
         const data = await new Promise<string>((resolve, reject) => {
@@ -348,15 +350,28 @@ function App() {
         const frames = await extractVideoFrames(file);
         setVideoFrames(frames);
       }
-      if (user?.userId) setUploadedImageUrl(await uploadMedia(user.userId, file));
+      const storagePath = await uploadMedia(user.userId, file);
+      if (!storagePath) throw new Error('The media upload did not return a storage location. Please upload it again.');
+      setUploadedImageUrl(storagePath);
     } catch (e: any) {
+      setUploadedImageUrl('');
       setError(e?.message || 'We could not prepare this media. Please try another file.');
+    } finally {
+      setBusy(false);
     }
   }
 
   async function analyzeContent() {
     if (!caption.trim() && !imageData && videoFrames.length === 0 && !uploadedImageUrl) {
       setError('Add the existing post caption or upload its image, video or audio first.');
+      return;
+    }
+    if (imageMime.startsWith('video/') && !uploadedImageUrl) {
+      setError('Your video has not finished uploading. Wait for the upload to complete, then analyse it again.');
+      return;
+    }
+    if (imageMime.startsWith('audio/') && !uploadedImageUrl) {
+      setError('Your audio has not finished uploading. Wait for the upload to complete, then analyse it again.');
       return;
     }
     setBusy(true);
@@ -438,10 +453,9 @@ function App() {
     try {
       const result = await invokeAI<{ plan: any }>('distribution', { niche: audienceNiche, content: activePost?.caption || '', topic: activePost?.topic || '', hashtags: activePost?.hashtags || [], mentions: (activePost?.caption.match(/@[\w.]+/g) || []) });
       setDistribution(result.plan);
-    } catch (e) {
-      setError(
-        'Audience recommendations are temporarily unavailable. Please try again.'
-      );
+    } catch (e: any) {
+      console.error('NTWRKH distribution request failed:', e);
+      setError(e?.message || 'Audience recommendations are temporarily unavailable. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -488,8 +502,9 @@ function App() {
     try {
       const result = await invokeAI<{ plan: any }>('distribution', { niche: activePost.niche || profile.niche || 'General', content: activePost.caption, topic: activePost.topic || '', hashtags: activePost.hashtags || [], mentions: (activePost.caption.match(/@[\w.]+/g) || []) });
       setDistribution(result.plan);
-    } catch (e) {
-      setError('We could not generate a plan. Please try again.');
+    } catch (e: any) {
+      console.error('NTWRKH distribution planner failed:', e);
+      setError(e?.message || 'We could not generate a plan. Please try again.');
     } finally {
       setBusy(false);
     }

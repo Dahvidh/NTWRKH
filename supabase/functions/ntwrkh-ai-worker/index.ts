@@ -153,7 +153,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
   let schema: any;
   if (action === "analyze") {
     const parts: any[] = [{
-      text: `Analyse this creator content accurately. Use supplied media frames as visual evidence and, when audio is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
+      text: `Analyse this creator content accurately. When a video is supplied, inspect its moving visuals and listen to its original soundtrack; when image frames are supplied, use them as visual evidence; when a standalone audio file is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}`,
     }];
     if (p.imageData && p.imageMimeType) {
       parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
@@ -162,7 +162,9 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
         if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
       }
     }
-    if (p.videoFileUri && p.videoMimeType) {
+    if (p.videoData && p.videoMimeType) {
+      parts.push({ inline_data: { mime_type: p.videoMimeType, data: p.videoData } });
+    } else if (p.videoFileUri && p.videoMimeType) {
       parts.push({ file_data: { mime_type: p.videoMimeType, file_uri: p.videoFileUri } });
     }
     if (p.audioData && p.audioMimeType) {
@@ -267,7 +269,7 @@ async function callWithFallback(action: string, payload: Record<string, any>) {
   // video through Gemini so neither soundtrack nor moving visuals are discarded.
   if (action === "analyze" && (
     (payload.audioData && payload.audioMimeType) ||
-    (payload.videoFileUri && payload.videoMimeType)
+    ((payload.videoData || payload.videoFileUri) && payload.videoMimeType)
   )) {
     return await callGeminiResilient(action, payload);
   }
@@ -347,6 +349,25 @@ async function attachVideoFromStorage(admin: ReturnType<typeof createClient>, us
   }
   if (String(asset.mime_type || "").toLowerCase() !== mimeType) {
     throw Object.assign(new Error("The uploaded video's file type could not be verified."), { code: "VIDEO_MIME_MISMATCH", retryable: false });
+  }
+
+  // Short clips are sent inline to avoid the extra Gemini Files upload + processing wait.
+  // 14 MiB raw leaves room for base64 expansion and the prompt under Gemini's 20 MB request limit.
+  const inlineLimitBytes = 14 * 1024 * 1024;
+  if (sizeBytes <= inlineLimitBytes) {
+    const { data: videoBlob, error: downloadError } = await admin.storage.from("ntwrkh-media").download(path);
+    if (downloadError || !videoBlob) {
+      throw Object.assign(new Error("NTWRKH could not read the uploaded video from storage."), { code: "VIDEO_STORAGE_READ_FAILED", retryable: true });
+    }
+    if (videoBlob.size > inlineLimitBytes) {
+      throw Object.assign(new Error("The uploaded video size changed during processing. Please upload it again."), { code: "VIDEO_SIZE_MISMATCH", retryable: false });
+    }
+    const bytes = new Uint8Array(await videoBlob.arrayBuffer());
+    let binary = "";
+    for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+    }
+    return { ...payload, videoData: btoa(binary), videoFileUri: undefined, videoMimeType: mimeType };
   }
 
   const key = Deno.env.get("GEMINI_API_KEY");

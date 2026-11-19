@@ -130,6 +130,9 @@ async function trackAIRequest(
     if (reservation?.reason === "duplicate_request") {
       throw new ProviderError("This AI request has already been submitted. Please wait for the existing result.", 409, "DUPLICATE_AI_REQUEST");
     }
+    if (reservation?.reason === "subscription_monthly_limit") {
+      throw new ProviderError("You've reached your monthly AI request limit on the Free plan. Your allowance resets next month.", 429, "SUBSCRIPTION_MONTHLY_LIMIT");
+    }
     if (reservation?.reason === "user_daily_limit") {
       throw new ProviderError("You've reached today's AI usage limit. Please try again tomorrow.", 429, "USER_DAILY_LIMIT");
     }

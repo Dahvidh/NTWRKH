@@ -119,6 +119,10 @@ export async function uploadMedia(
   if (isAudio && !supportedAudioTypes.includes(file.type.toLowerCase())) {
     throw new Error('This audio format is not supported yet. Use MP3, WAV, AIFF, AAC, OGG or FLAC.');
   }
+  const supportedVideoTypes = ['video/mp4', 'video/quicktime', 'video/webm'];
+  if (isVideo && !supportedVideoTypes.includes(file.type.toLowerCase())) {
+    throw new Error('This video format is not supported yet. Use MP4, MOV or WebM.');
+  }
 
   const maxSize = isVideo ? 50 * 1024 * 1024 : isAudio ? 12 * 1024 * 1024 : 5 * 1024 * 1024;
 

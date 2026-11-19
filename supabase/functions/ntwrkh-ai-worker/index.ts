@@ -294,12 +294,12 @@ async function callWithFallback(action: string, payload: Record<string, any>) {
 async function attachAudioFromStorage(admin: ReturnType<typeof createClient>, userId: string, payload: Record<string, any>) {
   const path = String(payload.audioStoragePath || "");
   const mimeType = String(payload.audioMimeType || "").toLowerCase();
-  const supportedTypes = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/aac", "audio/ogg", "audio/flac", "audio/mp4", "audio/webm"]);
+  const supportedTypes = new Set(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/aiff", "audio/aac", "audio/ogg", "audio/flac"]);
   if (!path || !path.startsWith(`${userId}/`) || path.includes("..")) {
     throw Object.assign(new Error("The uploaded audio file could not be verified."), { code: "AUDIO_ASSET_INVALID", retryable: false });
   }
   if (!supportedTypes.has(mimeType)) {
-    throw Object.assign(new Error("This audio format is not supported yet. Try MP3, WAV, M4A, AAC, OGG or FLAC."), { code: "AUDIO_FORMAT_UNSUPPORTED", retryable: false });
+    throw Object.assign(new Error("This audio format is not supported yet. Try MP3, WAV, AIFF, AAC, OGG or FLAC."), { code: "AUDIO_FORMAT_UNSUPPORTED", retryable: false });
   }
   const { data, error } = await admin.storage.from("ntwrkh-media").download(path);
   if (error || !data) {

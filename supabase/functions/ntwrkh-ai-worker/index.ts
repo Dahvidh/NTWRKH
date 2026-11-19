@@ -78,7 +78,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
   let schemaName: string | undefined;
   let schema: any;
   if (action === "analyze") {
-    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. Use supplied media frames as visual evidence and, when audio is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
+    const content: any[] = [{ type: "text", text: `Analyse this creator content accurately. If an original video file is supplied, inspect its visuals and listen to its original audio track; do not rely only on sampled frames. If a standalone audio file is supplied, listen to it carefully. Transcribe intelligible spoken words faithfully, identify the language, summarize speech/music/sound effects, and extract a few short exact key quotes. If there is no audio, return empty transcript, audioSummary, speechLanguage and keyQuotes. Mark unclear speech rather than guessing. Identify content format, extract existing hashtags and @mentions exactly, separate existing from recommended hashtags, and never invent live trends or performance data. Return topic, niche, audience, format, existing hashtags/mentions, transcript, audio summary, speech language, key quotes, new hashtags, keywords, caption and distribution recommendations. User caption: ${String(p.caption || "(none)")}` }];
     if (p.imageData && p.imageMimeType) content.push({ type: "image_url", image_url: { url: `data:${p.imageMimeType};base64,${p.imageData}` } });
     else if (Array.isArray(p.imageFrames)) for (const frame of p.imageFrames.slice(0, 3)) if (typeof frame === "string" && frame) content.push({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${frame}` } });
     messages = [{ role: "user", content }]; schemaName = "content_analysis"; schema = analysisSchema;
@@ -157,10 +157,13 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
     }];
     if (p.imageData && p.imageMimeType) {
       parts.push({ inline_data: { mime_type: p.imageMimeType, data: p.imageData } });
-    } else if (Array.isArray(p.imageFrames)) {
+    } else if (!p.videoFileUri && Array.isArray(p.imageFrames)) {
       for (const frame of p.imageFrames.slice(0, 3)) {
         if (typeof frame === "string" && frame) parts.push({ inline_data: { mime_type: "image/jpeg", data: frame } });
       }
+    }
+    if (p.videoFileUri && p.videoMimeType) {
+      parts.push({ file_data: { mime_type: p.videoMimeType, file_uri: p.videoFileUri } });
     }
     if (p.audioData && p.audioMimeType) {
       parts.push({ inline_data: { mime_type: p.audioMimeType, data: p.audioData } });
@@ -260,9 +263,12 @@ async function callGeminiResilient(action: string, payload: Record<string, any>)
 }
 
 async function callWithFallback(action: string, payload: Record<string, any>) {
-  // The OpenAI chat path below is text/image-only. Never silently skip an audio
-  // attachment: audio analysis must use Gemini's native audio input path.
-  if (action === "analyze" && payload.audioData && payload.audioMimeType) {
+  // OpenAI's current chat path is text/image-only. Route original audio and
+  // video through Gemini so neither soundtrack nor moving visuals are discarded.
+  if (action === "analyze" && (
+    (payload.audioData && payload.audioMimeType) ||
+    (payload.videoFileUri && payload.videoMimeType)
+  )) {
     return await callGeminiResilient(action, payload);
   }
   try {
@@ -315,6 +321,101 @@ async function attachAudioFromStorage(admin: ReturnType<typeof createClient>, us
   }
   const normalizedMime = mimeType === "audio/x-wav" ? "audio/wav" : mimeType === "audio/mpeg" ? "audio/mp3" : mimeType;
   return { ...payload, audioData: btoa(binary), audioMimeType: normalizedMime };
+}
+
+async function attachVideoFromStorage(admin: ReturnType<typeof createClient>, userId: string, payload: Record<string, any>) {
+  const path = String(payload.videoStoragePath || "");
+  const mimeType = String(payload.videoMimeType || "").toLowerCase();
+  const supportedTypes = new Set(["video/mp4", "video/quicktime", "video/webm"]);
+  if (!path || !path.startsWith(userId + "/") || path.includes("..")) {
+    throw Object.assign(new Error("The uploaded video file could not be verified."), { code: "VIDEO_ASSET_INVALID", retryable: false });
+  }
+  if (!supportedTypes.has(mimeType)) {
+    throw Object.assign(new Error("This video format is not supported yet. Use MP4, MOV or WebM."), { code: "VIDEO_FORMAT_UNSUPPORTED", retryable: false });
+  }
+  const { data: asset, error: assetError } = await admin.from("content_assets")
+    .select("size_bytes,mime_type")
+    .eq("user_id", userId)
+    .eq("storage_path", path)
+    .maybeSingle();
+  if (assetError || !asset) {
+    throw Object.assign(new Error("NTWRKH could not verify this uploaded video. Please upload it again."), { code: "VIDEO_ASSET_UNAVAILABLE", retryable: false });
+  }
+  const sizeBytes = Number(asset.size_bytes || 0);
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0 || sizeBytes > 50 * 1024 * 1024) {
+    throw Object.assign(new Error("Video files must be 50 MB or smaller."), { code: "VIDEO_FILE_TOO_LARGE", retryable: false });
+  }
+  if (String(asset.mime_type || "").toLowerCase() !== mimeType) {
+    throw Object.assign(new Error("The uploaded video's file type could not be verified."), { code: "VIDEO_MIME_MISMATCH", retryable: false });
+  }
+
+  const key = Deno.env.get("GEMINI_API_KEY");
+  if (!key) throw Object.assign(new Error("Gemini video analysis is not configured."), { code: "GEMINI_NOT_CONFIGURED", status: 503 });
+  const { data: signed, error: signedError } = await admin.storage.from("ntwrkh-media").createSignedUrl(path, 600);
+  if (signedError || !signed?.signedUrl) {
+    throw Object.assign(new Error("NTWRKH could not securely access the uploaded video."), { code: "VIDEO_SIGNED_URL_FAILED", retryable: true });
+  }
+
+  const start = await fetch("https://generativelanguage.googleapis.com/upload/v1beta/files?key=" + encodeURIComponent(key), {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(sizeBytes),
+      "X-Goog-Upload-Header-Content-Type": mimeType,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: "ntwrkh-" + crypto.randomUUID() } }),
+  });
+  if (!start.ok) {
+    const details = await start.text().catch(() => "");
+    throw Object.assign(new Error("Gemini could not prepare the video upload."), { code: "GEMINI_VIDEO_UPLOAD_START_FAILED", status: start.status, retryable: start.status >= 500 || start.status === 429, details: details.slice(0, 300) });
+  }
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!uploadUrl) {
+    throw Object.assign(new Error("Gemini did not return a secure video upload address."), { code: "GEMINI_VIDEO_UPLOAD_URL_MISSING", retryable: true });
+  }
+
+  const source = await fetch(signed.signedUrl);
+  if (!source.ok || !source.body) {
+    throw Object.assign(new Error("NTWRKH could not read the uploaded video from storage."), { code: "VIDEO_STORAGE_READ_FAILED", status: source.status, retryable: true });
+  }
+  const uploaded = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "Content-Length": String(sizeBytes),
+      "X-Goog-Upload-Offset": "0",
+      "X-Goog-Upload-Command": "upload, finalize",
+    },
+    body: source.body,
+  });
+  const uploadedData = await uploaded.json().catch(() => ({}));
+  const file = uploadedData?.file || uploadedData;
+  if (!uploaded.ok || !file?.name || !file?.uri) {
+    throw Object.assign(new Error("Gemini could not receive the uploaded video."), { code: "GEMINI_VIDEO_UPLOAD_FAILED", status: uploaded.status, retryable: uploaded.status >= 500 || uploaded.status === 429 });
+  }
+
+  try {
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      const statusResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/" + file.name + "?key=" + encodeURIComponent(key));
+      const statusData = await statusResponse.json().catch(() => ({}));
+      if (!statusResponse.ok) {
+        throw Object.assign(new Error("Gemini could not check video processing status."), { code: "GEMINI_VIDEO_STATUS_FAILED", status: statusResponse.status, retryable: statusResponse.status >= 500 || statusResponse.status === 429 });
+      }
+      const state = String(statusData?.state || "").toUpperCase();
+      if (state === "ACTIVE") {
+        return { ...payload, videoFileUri: String(statusData.uri || file.uri), videoMimeType: String(statusData.mimeType || mimeType), geminiFileName: String(file.name) };
+      }
+      if (state === "FAILED") {
+        throw Object.assign(new Error("Gemini could not process this video. Try a shorter MP4, MOV or WebM file."), { code: "GEMINI_VIDEO_PROCESSING_FAILED", retryable: false });
+      }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+    throw Object.assign(new Error("Video processing is taking longer than expected. Please retry shortly."), { code: "GEMINI_VIDEO_PROCESSING_TIMEOUT", retryable: true });
+  } catch (error) {
+    await fetch("https://generativelanguage.googleapis.com/v1beta/" + file.name + "?key=" + encodeURIComponent(key), { method: "DELETE" }).catch(() => undefined);
+    throw error;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -399,10 +500,15 @@ Deno.serve(async (req) => {
       return json({ processed: true, jobId: job.id, status: "failed", error: message });
     }
 
+    let geminiFileName: string | null = null;
     try {
       let jobPayload = job.payload || {};
       if (job.action === "analyze" && jobPayload.audioStoragePath) {
         jobPayload = await attachAudioFromStorage(admin, jobUserId, jobPayload);
+      }
+      if (job.action === "analyze" && jobPayload.videoStoragePath) {
+        jobPayload = await attachVideoFromStorage(admin, jobUserId, jobPayload);
+        geminiFileName = String(jobPayload.geminiFileName || "") || null;
       }
       const output = await callWithFallback(job.action, jobPayload);
       const costEstimate = estimateAICostUSD(output.provider, output.model, output.input_tokens, output.output_tokens);
@@ -429,6 +535,14 @@ Deno.serve(async (req) => {
         p_job_id: job.id, p_error_message: message, p_error_code: code, p_retryable: retryable,
       });
       return json({ processed: true, jobId: job.id, status: newStatus || "failed", error: message }, 200);
+    } finally {
+      if (geminiFileName) {
+        const key = Deno.env.get("GEMINI_API_KEY");
+        if (key) {
+          const cleanup = await fetch("https://generativelanguage.googleapis.com/v1beta/" + geminiFileName + "?key=" + encodeURIComponent(key), { method: "DELETE" }).catch(() => null);
+          if (cleanup && !cleanup.ok) console.warn("Gemini temporary video cleanup failed", geminiFileName, cleanup.status);
+        }
+      }
     }
   } catch (error) {
     console.error("AI worker failed", error);

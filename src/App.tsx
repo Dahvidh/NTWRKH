@@ -700,6 +700,7 @@ function App() {
               caption={caption}
               setCaption={setCaption}
               imageName={imageName}
+              mediaReady={!imageName || Boolean(uploadedImageUrl)}
               chooseImage={chooseImage}
               analysis={analysis}
               analyze={analyzeContent}
@@ -756,6 +757,7 @@ function App() {
               caption={caption}
               setCaption={setCaption}
               imageName={imageName}
+              mediaReady={!imageName || Boolean(uploadedImageUrl)}
               chooseImage={chooseImage}
               analysis={analysis}
               busy={busy}
@@ -1151,6 +1153,7 @@ function ReachAssistant({
   caption,
   setCaption,
   imageName,
+  mediaReady,
   chooseImage,
   analysis,
   analyze,
@@ -1167,6 +1170,7 @@ function ReachAssistant({
   caption: string;
   setCaption: (value: string) => void;
   imageName: string;
+  mediaReady: boolean;
   chooseImage: (file?: File) => void;
   analysis: Analysis | null;
   analyze: () => void;
@@ -1194,7 +1198,7 @@ function ReachAssistant({
       <section className="intake-panel">
         <div className="intake-heading"><div><span className="eyebrow">START WITH YOUR CONTENT</span><h2>Bring content you have already created.</h2><p>Upload an image, video or audio recording and paste its existing caption. NTWRKH combines visual and spoken-content signals to find relevant audiences, creators and communities.</p></div><span className="intake-ai"><Sparkles size={14} /> AI powered</span></div>
         <textarea className="content-intake" value={caption} onChange={event => setCaption(event.target.value)} placeholder="Paste the caption or text from your existing post. Include its current hashtags and @mentions so NTWRKH can assess them." rows={4} />
-        <div className="intake-actions"><label className="upload-content-btn"><FileImage size={17} /> {imageName || 'Upload image / video / audio'}<input type="file" accept="image/*,video/*,audio/*" onChange={event => chooseImage(event.target.files?.[0])} /></label><span className="intake-hint">Images 5 MB · Videos 50 MB · Audio 12 MB. Audio analysis transcribes speech and identifies sound context.</span><button className="primary-btn" onClick={analyze} disabled={analyzing || (!caption.trim() && !imageName)}>{analyzing ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Analyse existing content <ArrowRight size={15} /></button></div>
+        <div className="intake-actions"><label className="upload-content-btn"><FileImage size={17} /> {imageName || 'Upload image / video / audio'}<input type="file" accept="image/*,video/*,audio/*" onChange={event => chooseImage(event.target.files?.[0])} /></label><span className="intake-hint">Images 5 MB · Videos 50 MB · Audio 12 MB. Audio analysis transcribes speech and identifies sound context.</span><button className="primary-btn" onClick={analyze} disabled={analyzing || !mediaReady || (!caption.trim() && !imageName)}>{analyzing ? <Loader2 className="spin" size={16} /> : <Sparkles size={16} />} Analyse existing content <ArrowRight size={15} /></button></div>
         {analysis && <div className="intelligence-result"><div className="result-topline"><span className="result-check"><Check size={14} /> Content understood</span><span className="result-topic">{analysis.topic || analysis.niche || 'Content analysis'}</span></div><div className="intelligence-grid"><div><small>CONTENT CATEGORY</small><strong>{analysis.niche || 'Being refined'}</strong></div><div><small>CORE TOPIC</small><strong>{analysis.topic || 'Identified from your content'}</strong></div><div><small>LIKELY AUDIENCE</small><strong>{analysis.audience || 'Audience signals identified'}</strong></div></div><div className="intelligence-grid"><div><small>FORMAT</small><strong>{analysis.contentFormat || 'Content'}</strong></div><div><small>EXISTING HASHTAGS</small><strong>{analysis.existingHashtags?.join(' ') || 'None detected'}</strong></div><div><small>EXISTING TAGGED ACCOUNTS</small><strong>{analysis.existingMentions?.join(' ') || 'None detected'}</strong></div></div>{(analysis.transcript || analysis.audioSummary) && <div className="distribution-section"><h3>{analysis.transcript ? `Audio transcript${analysis.speechLanguage ? ` · ${analysis.speechLanguage}` : ''}` : 'Audio understanding'}</h3>{analysis.transcript && <p>{analysis.transcript}</p>}{analysis.audioSummary && <p>{analysis.audioSummary}</p>}{analysis.keyQuotes?.length ? <ul className="insight-list">{analysis.keyQuotes.map((quote, index) => <li key={index}>“{quote}”</li>)}</ul> : null}</div>}{analysis.keywords?.length ? <div className="keyword-row">{analysis.keywords.map((word: string) => <span key={word}>{word}</span>)}</div> : null}{analysis.recommendations?.length ? <ul className="insight-list">{analysis.recommendations.map((item: string, index: number) => <li key={index}>{item}</li>)}</ul> : null}<button className="primary-btn" onClick={findAudience} disabled={finding}>{finding ? <Loader2 className="spin" size={16} /> : <Target size={16} />} Find where this belongs <ArrowRight size={15} /></button></div>}
         {distribution && <div className="distribution-result"><div className="result-topline"><span className="result-check"><Check size={14} /> Distribution route prepared</span><span className="result-topic">Relevance-based recommendations · not live trend data</span></div><p className="distribution-summary">{distribution.summary}</p>{distribution.hashtagGroups?.map((group: any, index: number) => <div className="distribution-section" key={index}><h3>{group.label}</h3><p>{group.purpose}</p><div className="keyword-row">{group.hashtags?.map((tag: string) => <span key={tag}>{tag.startsWith('#') ? tag : `#${tag}`}</span>)}</div></div>)}{distribution.audiences?.length > 0 && <div className="distribution-section"><h3>People most likely to care</h3><ul className="insight-list">{distribution.audiences.map((item: any, i: number) => <li key={i}><b>{item.name}</b> — {item.reason}</li>)}</ul></div>}{distribution.communities?.length > 0 && <div className="distribution-section"><h3>Communities to participate in</h3><ul className="insight-list">{distribution.communities.map((item: any, i: number) => <li key={i}><b>{item.name} · {item.platform}</b> — {item.approach}</li>)}</ul></div>}{distribution.creatorTypes?.length > 0 && <div className="distribution-section"><h3>Creators and accounts to research</h3><ul className="insight-list">{distribution.creatorTypes.map((item: any, i: number) => <li key={i}><b>{item.type}</b> — {item.why} <span>{item.outreachAngle}</span></li>)}</ul></div>}{distribution.actions?.length > 0 && <div className="distribution-section"><h3>Your distribution checklist</h3><ol className="insight-list">{distribution.actions.map((item: string, i: number) => <li key={i}>{item}</li>)}</ol></div>}{distribution.cautions?.length > 0 && <div className="distribution-section"><h3>Keep in mind</h3><ul className="insight-list">{distribution.cautions.map((item: string, i: number) => <li key={i}>{item}</li>)}</ul></div>}</div>}
       </section>
@@ -1599,7 +1603,7 @@ function CreateContent({
           </div>
           <button
             className="primary-btn full"
-            disabled={busy || (!caption.trim() && !imageName)}
+            disabled={busy || !mediaReady || (!caption.trim() && !imageName)}
             onClick={analyze}
           >
             {busy ? (

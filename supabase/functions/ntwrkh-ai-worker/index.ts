@@ -388,11 +388,13 @@ Deno.serve(async (req) => {
     });
     if (reserveError) throw reserveError;
     if (!reservation?.allowed && reservation?.reason !== "duplicate_request") {
-      const message = reservation?.reason === "user_daily_limit"
-        ? "You've reached today's AI usage limit. Please try again tomorrow."
-        : reservation?.reason === "monthly_budget_limit"
-          ? "NTWRKH has reached its monthly AI budget. AI requests will be available again next month."
-          : "NTWRKH is at its current daily AI capacity. Your content is safe; please try again later.";
+      const message = reservation?.reason === "subscription_monthly_limit"
+        ? "You've reached your monthly AI request limit on the Free plan. Your allowance resets next month."
+        : reservation?.reason === "user_daily_limit"
+          ? "You've reached today's AI usage limit. Please try again tomorrow."
+          : reservation?.reason === "monthly_budget_limit"
+            ? "NTWRKH has reached its monthly AI budget. AI requests will be available again next month."
+            : "NTWRKH is at its current daily AI capacity. Your content is safe; please try again later.";
       await admin.rpc("ntwrkh_fail_ai_job", { p_job_id: job.id, p_error_message: message, p_error_code: reservation?.reason || "AI_CAPACITY_LIMIT", p_retryable: false });
       return json({ processed: true, jobId: job.id, status: "failed", error: message });
     }

@@ -54,10 +54,13 @@ const planSchema = {
   type: "object", additionalProperties: false,
   properties: {
     summary: { type: "string" },
+    hashtagGroups: { type: "array", items: { type: "object", additionalProperties: false, properties: { label: { type: "string" }, purpose: { type: "string" }, hashtags: { type: "array", items: { type: "string" } } }, required: ["label", "purpose", "hashtags"] } },
     audiences: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, reason: { type: "string" } }, required: ["name", "reason"] } },
-    channels: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, reason: { type: "string" } }, required: ["name", "reason"] } },
+    communities: { type: "array", items: { type: "object", additionalProperties: false, properties: { name: { type: "string" }, platform: { type: "string" }, approach: { type: "string" } }, required: ["name", "platform", "approach"] } },
+    creatorTypes: { type: "array", items: { type: "object", additionalProperties: false, properties: { type: { type: "string" }, why: { type: "string" }, outreachAngle: { type: "string" } }, required: ["type", "why", "outreachAngle"] } },
     actions: { type: "array", items: { type: "string" } },
-  }, required: ["summary", "audiences", "channels", "actions"],
+    cautions: { type: "array", items: { type: "string" } },
+  }, required: ["summary", "hashtagGroups", "audiences", "communities", "creatorTypes", "actions", "cautions"],
 };
 const tiktokSchema = {
   type: "object", additionalProperties: false,
@@ -91,7 +94,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
     ];
   } else if (action === "distribution") {
     messages = [
-      { role: "system", content: "Build a practical content distribution plan. Recommend channels only where there is a plausible audience fit. Do not claim live trend or account analytics access." },
+      { role: "system", content: "Build a useful, specific content distribution plan matching NTWRKH's interface: grouped hashtag recommendations, likely audience segments, relevant communities with platform and participation approach, creator account types worth researching, practical actions, and cautions. Do not claim live trend or account analytics access or invent creator handles." },
       { role: "user", content: `Niche: ${p.niche || "General"}\nTopic: ${p.topic || "Not supplied"}\nContent: ${p.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(p.hashtags || [])}\nExisting mentions: ${JSON.stringify(p.mentions || [])}` },
     ]; schemaName = "distribution_plan"; schema = planSchema;
   } else if (action === "tiktok-plan") {
@@ -186,7 +189,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
       { role: "user", parts: [{ text: String(p.message || "") }] },
     ];
   } else if (action === "distribution") {
-    systemInstruction = "Build a practical content distribution plan. Recommend channels only where there is a plausible audience fit. Do not claim live trend or account analytics access.";
+    systemInstruction = "Build a useful, specific content distribution plan that matches NTWRKH's interface. Return grouped hashtag recommendations, likely audience segments, relevant communities with platform and participation approach, creator account types worth researching, practical actions, and cautions. Do not claim live trend or account analytics access. Do not invent specific creator handles or claim verified communities without evidence.";
     contents = [{
       role: "user",
       parts: [{ text: `Niche: ${p.niche || "General"}\nTopic: ${p.topic || "Not supplied"}\nContent: ${p.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(p.hashtags || [])}\nExisting mentions: ${JSON.stringify(p.mentions || [])}` }],
@@ -269,7 +272,18 @@ async function callGeminiResilient(action: string, payload: Record<string, any>)
 
 async function callWithFallback(action: string, payload: Record<string, any>) {
   // OpenAI billing is currently exhausted for this deployment; route distribution directly to Gemini instead of waiting for a predictable billing failure.
-  if (action === "distribution") return await callGeminiResilient(action, payload);
+  if (action === "distribution") {
+    try {
+      return await callGeminiResilient(action, payload);
+    } catch (error: any) {
+      // Both Gemini models have already been tried. Fail clearly instead of
+      // sending the same unavailable-provider request through multi-minute retries.
+      throw Object.assign(
+        new Error("NTWRKH could not reach its distribution AI right now. Please retry in a minute. " + String(error?.message || "")),
+        { code: String(error?.code || "DISTRIBUTION_PROVIDER_UNAVAILABLE"), status: Number(error?.status) || 503, retryable: false },
+      );
+    }
+  }
   // OpenAI's current chat path is text/image-only. Route original audio and
   // video through Gemini so neither soundtrack nor moving visuals are discarded.
   if (action === "analyze" && (

@@ -19,6 +19,7 @@ create table if not exists public.subscription_plans (
 alter table public.subscription_plans enable row level security;
 revoke all on public.subscription_plans from anon, authenticated;
 grant select on public.subscription_plans to anon, authenticated;
+grant all on public.subscription_plans to service_role;
 drop policy if exists "Available subscription plans are viewable" on public.subscription_plans;
 create policy "Available subscription plans are viewable"
   on public.subscription_plans for select
@@ -73,6 +74,7 @@ create index if not exists user_subscriptions_user_status_idx
 alter table public.user_subscriptions enable row level security;
 revoke all on public.user_subscriptions from anon, authenticated;
 grant select on public.user_subscriptions to authenticated;
+grant all on public.user_subscriptions to service_role;
 drop policy if exists "Users can view their own subscription" on public.user_subscriptions;
 create policy "Users can view their own subscription"
   on public.user_subscriptions for select

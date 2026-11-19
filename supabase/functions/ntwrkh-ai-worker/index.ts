@@ -313,7 +313,7 @@ async function attachAudioFromStorage(admin: ReturnType<typeof createClient>, us
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {
     binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
   }
-  const normalizedMime = mimeType === "audio/x-wav" ? "audio/wav" : mimeType === "audio/mp3" ? "audio/mpeg" : mimeType;
+  const normalizedMime = mimeType === "audio/x-wav" ? "audio/wav" : mimeType === "audio/mpeg" ? "audio/mp3" : mimeType;
   return { ...payload, audioData: btoa(binary), audioMimeType: normalizedMime };
 }
 

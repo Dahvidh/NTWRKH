@@ -324,6 +324,8 @@ function App() {
     const isVideo = file.type.startsWith('video/');
     const isAudio = file.type.startsWith('audio/');
     if (!isImage && !isVideo && !isAudio) { setError('Choose an image, video or audio file.'); return; }
+    const supportedAudioTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-wav', 'audio/aiff', 'audio/aac', 'audio/ogg', 'audio/flac'];
+    if (isAudio && !supportedAudioTypes.includes(file.type.toLowerCase())) { setError('This audio format is not supported yet. Use MP3, WAV, AIFF, AAC, OGG or FLAC.'); return; }
     if (file.size > (isVideo ? 50 : isAudio ? 12 : 5) * 1024 * 1024) { setError(isVideo ? 'Choose a video smaller than 50 MB.' : isAudio ? 'Choose audio smaller than 12 MB.' : 'Choose an image smaller than 5 MB.'); return; }
     setError('');
     setImageName(file.name);
@@ -1563,7 +1565,7 @@ function CreateContent({
           <label className="upload-zone">
             <input
               type="file"
-              accept="image/*,video/*"
+              accept="image/*,video/*,audio/*"
               onChange={e => chooseImage(e.target.files?.[0])}
             />
             <span className="upload-icon">

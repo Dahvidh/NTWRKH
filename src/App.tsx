@@ -189,7 +189,6 @@ function App() {
       setIsAdmin(false);
     }
     setAudienceNiche(nextProfile.niche || '');
-    if (!nextProfile.userType || !nextProfile.niche) setView('My profile');
   }
 
   useEffect(() => {

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getSession, mapUser, signInWithGoogle, signOut as supabaseSignOut,
-  loadProfile, loadPosts, loadChat, saveProfile as persistProfile,
+  loadProfile, loadPosts, loadChat, loadLibrary, saveWorkspacePlan, renameWorkspacePlan, deleteWorkspacePlan, deleteSavedAnalysis, saveProfile as persistProfile,
   createPost, uploadMedia, invokeAI, sendChat, saveAnalysis, loadAIJobs, loadAIUsageSummary,
 } from './lib/services';
-import type { AIJob, AIUsageSummary } from './lib/services';
+import type { AIJob, AIUsageSummary, LibraryData, SavedAnalysis, SavedPlan } from './lib/services';
 import { supabase } from './lib/supabase';
 import {
   Activity,
@@ -14,6 +14,9 @@ import {
   BarChart3,
   Bell,
   Bookmark,
+  FileText,
+  Trash2,
+  Pencil,
   Check,
   ChevronDown,
   Compass,
@@ -105,6 +108,7 @@ type View =
   | 'Distribution planner'
   | 'Analytics'
   | 'AI activity'
+  | 'My Library'
   | 'Admin finance'
   | 'YouTube Discover'
   | 'TikTok Creator Lab'
@@ -114,6 +118,7 @@ type View =
 const nav = [
   { label: 'NTWRKH assistant' as View, icon: Sparkles },
   { label: 'AI activity' as View, icon: Activity },
+  { label: 'My Library' as View, icon: Bookmark },
   { label: 'Discover' as View, icon: Compass },
   { label: 'YouTube Discover' as View, icon: Youtube },
   { label: 'Distribution planner' as View, icon: Target },
@@ -153,6 +158,8 @@ function App() {
   const [audienceNiche, setAudienceNiche] = useState('');
   const [selectedPost, setSelectedPost] = useState('');
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [libraryData, setLibraryData] = useState<LibraryData>({ analyses: [], plans: [], assets: [], conversations: [] });
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [chatBusy, setChatBusy] = useState(false);
   const [tiktokConfigured, setTiktokConfigured] = useState(false);
@@ -173,15 +180,17 @@ function App() {
   const [youtubeError, setYoutubeError] = useState('');
 
   async function loadWorkspace(currentUser: User) {
-    const [nextProfile, nextPosts, nextMessages] = await Promise.all([
+    const [nextProfile, nextPosts, nextMessages, nextLibrary] = await Promise.all([
       loadProfile(currentUser.userId),
       loadPosts(currentUser.userId),
       loadChat(currentUser.userId).catch(() => []),
+      loadLibrary(currentUser.userId),
     ]);
     setProfile(nextProfile);
     setProfileDraft(nextProfile);
     setPosts(nextPosts);
     setChatMessages(nextMessages);
+    setLibraryData(nextLibrary);
     try {
       const { error: adminError } = await supabase.rpc('ntwrkh_get_admin_finance_summary');
       setIsAdmin(!adminError);
@@ -217,7 +226,7 @@ function App() {
       const nextUser = session?.user ? mapUser(session.user) : null;
       setUser(nextUser);
       if (nextUser) loadWorkspace(nextUser).catch(() => setError('We could not load your workspace. Please refresh and try again.'));
-      else { setPosts([]); setProfile({}); setChatMessages([]); }
+      else { setPosts([]); setProfile({}); setChatMessages([]); setLibraryData({ analyses: [], plans: [], assets: [], conversations: [] }); }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
   }, []);
@@ -395,7 +404,7 @@ function App() {
         videoMimeType: imageMime.startsWith('video/') ? imageMime : undefined,
       });
       setAnalysis(result.analysis);
-      if (user?.userId) await saveAnalysis(user.userId, caption, result.analysis, uploadedImageUrl || undefined);
+      if (user?.userId) { await saveAnalysis(user.userId, caption, result.analysis, uploadedImageUrl || undefined); setLibraryData(await loadLibrary(user.userId)); }
     } catch (e: any) {
       console.error('NTWRKH content analysis failed:', e);
       setError(e?.message || 'The AI analysis could not be completed. Please try again.');
@@ -449,6 +458,13 @@ function App() {
     }
   }
 
+
+  async function persistPlan(platform: string, kind: 'distribution' | 'creator-plan', title: string, plan: any, source?: Record<string, unknown>) {
+    if (!user?.userId) return;
+    const saved = await saveWorkspacePlan(user.userId, platform, kind, title, plan, source);
+    setLibraryData(current => ({ ...current, plans: [saved, ...current.plans.filter(item => item.id !== saved.id)] }));
+  }
+
   async function findAudience() {
     if (!audienceNiche.trim()) {
       setError('Enter a niche to find relevant audiences.');
@@ -460,6 +476,7 @@ function App() {
     try {
       const result = await invokeAI<{ plan: any }>('distribution', { niche: audienceNiche, content: activePost?.caption || '', topic: activePost?.topic || '', hashtags: activePost?.hashtags || [], mentions: (activePost?.caption.match(/@[\w.]+/g) || []) });
       setDistribution(result.plan);
+      await persistPlan('cross-platform', 'distribution', `Audience discovery · ${audienceNiche}`, result.plan, { niche: audienceNiche, content: activePost?.caption || '' });
     } catch (e: any) {
       console.error('NTWRKH distribution request failed:', e);
       setError(e?.message || 'Audience recommendations are temporarily unavailable. Please try again.');
@@ -494,6 +511,7 @@ function App() {
     try {
       const result = await invokeAI<{ plan: any }>('tiktok-plan', { niche: tiktokNiche, audience: tiktokAudience, goal: tiktokGoal, format: tiktokFormat, region: tiktokRegion });
       setTiktokPlan(result.plan);
+      await persistPlan('tiktok', 'creator-plan', `TikTok creator plan · ${tiktokNiche}`, result.plan, { niche: tiktokNiche, audience: tiktokAudience, goal: tiktokGoal, format: tiktokFormat, region: tiktokRegion });
     } catch { setError('The TikTok content plan could not be generated. Please try again.'); }
     finally { setBusy(false); }
   }
@@ -509,6 +527,7 @@ function App() {
     try {
       const result = await invokeAI<{ plan: any }>('distribution', { niche: activePost.niche || profile.niche || 'General', content: activePost.caption, topic: activePost.topic || '', hashtags: activePost.hashtags || [], mentions: (activePost.caption.match(/@[\w.]+/g) || []) });
       setDistribution(result.plan);
+      await persistPlan('cross-platform', 'distribution', `Distribution plan · ${activePost.topic || activePost.niche || 'Content'}`, result.plan, { postId: activePost.id, caption: activePost.caption });
     } catch (e: any) {
       console.error('NTWRKH distribution planner failed:', e);
       setError(e?.message || 'We could not generate a plan. Please try again.');
@@ -604,6 +623,12 @@ function App() {
                   setView(item.label);
                   setMobileNav(false);
                   setError('');
+                  if (item.label === 'My Library' && user?.userId) {
+                    setLibraryLoading(true);
+                    try { setLibraryData(await loadLibrary(user.userId)); }
+                    catch { setError('Your saved library could not be loaded. Please try again.'); }
+                    finally { setLibraryLoading(false); }
+                  }
                   if (item.label === 'NTWRKH assistant') {
                     try {
                       const messages = await loadChat(user!.userId);
@@ -719,6 +744,7 @@ function App() {
                 try {
                   const result = await invokeAI<{ plan: any }>('distribution', { niche: analysis?.niche || profile.niche || 'General', content: caption || analysis?.caption || '', topic: analysis?.topic || '', hashtags: analysis?.existingHashtags || [], mentions: analysis?.existingMentions || [] });
                   setDistribution(result.plan);
+                  await persistPlan('cross-platform', 'distribution', `Distribution plan · ${analysis?.topic || profile.niche || 'Content'}`, result.plan, { caption: caption || analysis?.caption || '' });
                 } catch {
                   setError('We could not find distribution opportunities just now. Please try again.');
                 } finally { setBusy(false); }
@@ -726,6 +752,24 @@ function App() {
               finding={busy}
             />
           )}
+
+          {view === 'My Library' && user && (
+            <MyLibrary
+              data={libraryData}
+              loading={libraryLoading}
+              refresh={async () => { setLibraryLoading(true); try { setLibraryData(await loadLibrary(user.userId)); } finally { setLibraryLoading(false); } }}
+              openAnalysis={(item) => { setAnalysis(item.analysis); setCaption(item.inputText || item.analysis.caption || ''); setImageName(item.assetName || ''); setUploadedImageUrl(''); setView('NTWRKH assistant'); }}
+              openPlan={(item) => {
+                if (item.payload.kind === 'creator-plan') { setTiktokPlan(item.payload.plan || null); setView('TikTok Creator Lab'); }
+                else { setDistribution(item.payload.plan || null); setView('Distribution planner'); }
+              }}
+              openChat={async () => { setView('NTWRKH assistant'); setChatMessages(await loadChat(user.userId)); }}
+              deleteAnalysis={async (item) => { await deleteSavedAnalysis(user.userId, item.id); setLibraryData(await loadLibrary(user.userId)); }}
+              deletePlan={async (item) => { await deleteWorkspacePlan(user.userId, item.id); setLibraryData(await loadLibrary(user.userId)); }}
+              renamePlan={async (item, title) => { await renameWorkspacePlan(user.userId, item.id, title); setLibraryData(await loadLibrary(user.userId)); }}
+            />
+          )}
+
           {view === 'AI activity' && user && (
             <AIActivity userId={user.userId} />
           )}
@@ -806,6 +850,80 @@ function App() {
         </div>
       </main>
     </div>
+  );
+}
+
+
+type MyLibraryProps = {
+  data: LibraryData;
+  loading: boolean;
+  refresh: () => void;
+  openAnalysis: (item: SavedAnalysis) => void;
+  openPlan: (item: SavedPlan) => void;
+  openChat: () => void;
+  deleteAnalysis: (item: SavedAnalysis) => Promise<void>;
+  deletePlan: (item: SavedPlan) => Promise<void>;
+  renamePlan: (item: SavedPlan, title: string) => Promise<void>;
+};
+
+function MyLibrary({ data, loading, refresh, openAnalysis, openPlan, openChat, deleteAnalysis, deletePlan, renamePlan }: MyLibraryProps) {
+  const [filter, setFilter] = useState<'all' | 'analyses' | 'plans' | 'uploads' | 'chats'>('all');
+  const [editingId, setEditingId] = useState('');
+  const [editingTitle, setEditingTitle] = useState('');
+  const [workingId, setWorkingId] = useState('');
+  const dateLabel = (value: string) => new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+  const show = (kind: typeof filter) => filter === 'all' || filter === kind;
+  const total = data.analyses.length + data.plans.length + data.assets.length + data.conversations.length;
+  return (
+    <>
+      <PageHeading eyebrow="YOUR PRIVATE WORKSPACE" title="My Library" subtitle="Your analyses, strategies, uploads and assistant history — saved to your account and ready when you return."
+        action={<button className="text-btn" onClick={refresh} disabled={loading}>{loading ? <Loader2 className="spin" size={15} /> : <Activity size={15} />} Refresh library</button>} />
+      <div className="library-stats">
+        <div className="panel"><strong>{data.analyses.length}</strong><span>Analyses</span></div>
+        <div className="panel"><strong>{data.plans.length}</strong><span>Saved plans</span></div>
+        <div className="panel"><strong>{data.assets.length}</strong><span>Uploads</span></div>
+        <div className="panel"><strong>{data.conversations.length}</strong><span>Conversations</span></div>
+      </div>
+      <div className="library-filters">
+        {(['all','analyses','plans','uploads','chats'] as const).map(item => <button key={item} className={filter === item ? 'active' : ''} onClick={() => setFilter(item)}>{item === 'all' ? 'Everything' : item === 'chats' ? 'Assistant history' : item[0].toUpperCase()+item.slice(1)}</button>)}
+      </div>
+      {loading ? <div className="panel library-empty"><Loader2 className="spin" size={20} /> Loading your saved work…</div> : total === 0 ? (
+        <div className="panel library-empty"><Bookmark size={25} /><h3>Your library is ready.</h3><p>When you analyse content, generate a strategy or chat with the assistant, your work will be saved here automatically.</p></div>
+      ) : (
+        <div className="library-grid">
+          {show('analyses') && data.analyses.map(item => (
+            <article className="panel library-card" key={'analysis-'+item.id}>
+              <div className="library-card-meta"><span>CONTENT ANALYSIS</span><time>{dateLabel(item.createdAt)}</time></div>
+              <h3>{item.analysis.topic || item.analysis.niche || item.inputText?.slice(0,65) || 'Saved content analysis'}</h3>
+              <p>{item.assetName ? item.assetName+' · ' : ''}{item.analysis.audience || item.analysis.contentFormat || 'Analysis, audience fit and content recommendations'}</p>
+              <div className="library-card-actions"><button className="primary-btn" onClick={() => openAnalysis(item)}>Reopen analysis</button><button className="icon-btn" title="Delete analysis" disabled={workingId===item.id} onClick={async () => { if (!window.confirm('Delete this saved analysis? Generated captions and recommendations linked to it will also be deleted.')) return; setWorkingId(item.id); try { await deleteAnalysis(item); } finally { setWorkingId(''); } }}><Trash2 size={16}/></button></div>
+            </article>
+          ))}
+          {show('plans') && data.plans.map(item => (
+            <article className="panel library-card" key={'plan-'+item.id}>
+              <div className="library-card-meta"><span>{item.payload.kind === 'creator-plan' ? 'CREATOR PLAN' : 'DISTRIBUTION STRATEGY'}</span><time>{dateLabel(item.createdAt)}</time></div>
+              {editingId === item.id ? <div className="library-rename"><input value={editingTitle} onChange={e => setEditingTitle(e.target.value)} aria-label="Plan title"/><button className="text-btn" disabled={workingId===item.id} onClick={async () => { setWorkingId(item.id); try { await renamePlan(item, editingTitle); setEditingId(''); } finally { setWorkingId(''); } }}>Save</button><button className="text-btn" onClick={() => setEditingId('')}>Cancel</button></div> : <h3>{item.payload.title || (item.platform === 'tiktok' ? 'TikTok creator plan' : 'Saved distribution plan')}</h3>}
+              <p>{item.platform.replace(/-/g,' ')} · {item.status} · {item.payload.plan?.summary || item.payload.plan?.overview || 'Saved strategy and recommended next steps'}</p>
+              <div className="library-card-actions"><button className="primary-btn" onClick={() => openPlan(item)}>Open plan</button><button className="icon-btn" title="Rename plan" onClick={() => { setEditingId(item.id); setEditingTitle(item.payload.title || ''); }}><Pencil size={16}/></button><button className="icon-btn" title="Delete plan" disabled={workingId===item.id} onClick={async () => { if (!window.confirm('Delete this saved plan?')) return; setWorkingId(item.id); try { await deletePlan(item); } finally { setWorkingId(''); } }}><Trash2 size={16}/></button></div>
+            </article>
+          ))}
+          {show('uploads') && data.assets.map(item => (
+            <article className="panel library-card" key={'asset-'+item.id}>
+              <div className="library-card-meta"><span>UPLOADED {item.mediaKind.toUpperCase()}</span><time>{dateLabel(item.createdAt)}</time></div>
+              <h3>{item.fileName}</h3><p>{item.status} · Stored in your private NTWRKH media library</p>
+            </article>
+          ))}
+          {show('chats') && data.conversations.map(item => (
+            <article className="panel library-card" key={'chat-'+item.id}>
+              <div className="library-card-meta"><span>ASSISTANT CONVERSATION</span><time>{dateLabel(item.updatedAt)}</time></div>
+              <h3>{item.title}</h3><p>{item.lastMessage || 'Saved assistant conversation'}</p>
+              <div className="library-card-actions"><button className="primary-btn" onClick={openChat}>Open assistant</button></div>
+            </article>
+          ))}
+          {filter !== 'all' && ((filter === 'analyses' && !data.analyses.length) || (filter === 'plans' && !data.plans.length) || (filter === 'uploads' && !data.assets.length) || (filter === 'chats' && !data.conversations.length)) && <div className="panel library-empty">Nothing saved in this section yet.</div>}
+        </div>
+      )}
+    </>
   );
 }
 

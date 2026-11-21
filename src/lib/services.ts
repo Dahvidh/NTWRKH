@@ -21,6 +21,45 @@ export type Analysis = {
 export type Post = { id: string; ownerId: string; caption: string; topic?: string; niche?: string; hashtags?: string[]; analysis?: Analysis; createdAt: string; visibility?: string; mediaUrl?: string };
 export type ChatMessage = { role: 'user' | 'assistant'; content: string; createdAt?: string };
 
+export type SavedAnalysis = {
+  id: string;
+  inputText: string;
+  analysis: Analysis;
+  createdAt: string;
+  assetId?: string | null;
+  assetName?: string;
+  mediaKind?: string;
+};
+export type SavedPlan = {
+  id: string;
+  platform: string;
+  status: string;
+  payload: { kind?: string; title?: string; plan?: any; source?: any };
+  createdAt: string;
+  updatedAt: string;
+};
+export type SavedAsset = {
+  id: string;
+  fileName: string;
+  mediaKind: string;
+  status: string;
+  storagePath: string;
+  createdAt: string;
+};
+export type SavedConversation = {
+  id: string;
+  title: string;
+  updatedAt: string;
+  lastMessage?: string;
+};
+export type LibraryData = {
+  analyses: SavedAnalysis[];
+  plans: SavedPlan[];
+  assets: SavedAsset[];
+  conversations: SavedConversation[];
+};
+
+
 export type AIUsagePeriod = {
   requests: number;
   completed: number;
@@ -348,4 +387,117 @@ export async function sendChat(userId: string, message: string): Promise<ChatMes
   if (saveAssistantError) throw saveAssistantError;
   await supabase.from('conversations').update({ updated_at: new Date().toISOString() }).eq('id', conversationId);
   return loadChat(id);
+}
+
+
+export async function loadLibrary(userId: string): Promise<LibraryData> {
+  const id = requireUserId(userId);
+  const [analysisResult, assetResult, planResult, conversationResult] = await Promise.all([
+    supabase.from('analyses').select('id,input_text,analysis,created_at,asset_id').eq('user_id', id).order('created_at', { ascending: false }).limit(100),
+    supabase.from('content_assets').select('id,original_filename,media_kind,status,storage_path,created_at').eq('user_id', id).order('created_at', { ascending: false }).limit(100),
+    supabase.from('publishing_plans').select('id,platform,status,payload,created_at,updated_at').eq('user_id', id).order('created_at', { ascending: false }).limit(100),
+    supabase.from('conversations').select('id,title,updated_at').eq('user_id', id).order('updated_at', { ascending: false }).limit(50),
+  ]);
+  for (const result of [analysisResult, assetResult, planResult, conversationResult]) {
+    if (result.error) throw result.error;
+  }
+  const assets = (assetResult.data || []).map((row: any) => ({
+    id: row.id,
+    fileName: row.original_filename || 'Uploaded content',
+    mediaKind: row.media_kind || 'file',
+    status: row.status || 'uploaded',
+    storagePath: row.storage_path,
+    createdAt: row.created_at,
+  })) as SavedAsset[];
+  const assetsById = new Map(assets.map(asset => [asset.id, asset]));
+  const analyses = (analysisResult.data || []).map((row: any) => {
+    const asset = row.asset_id ? assetsById.get(row.asset_id) : undefined;
+    return {
+      id: row.id,
+      inputText: row.input_text || '',
+      analysis: row.analysis || {},
+      createdAt: row.created_at,
+      assetId: row.asset_id,
+      assetName: asset?.fileName,
+      mediaKind: asset?.mediaKind,
+    };
+  }) as SavedAnalysis[];
+  const plans = (planResult.data || []).map((row: any) => ({
+    id: row.id,
+    platform: row.platform,
+    status: row.status,
+    payload: row.payload || {},
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  })) as SavedPlan[];
+  const conversations = (conversationResult.data || []).map((row: any) => ({
+    id: row.id,
+    title: row.title || 'NTWRKH assistant',
+    updatedAt: row.updated_at,
+  })) as SavedConversation[];
+  if (conversations.length) {
+    const ids = conversations.map(item => item.id);
+    const { data: messageRows, error: messageError } = await supabase
+      .from('messages')
+      .select('conversation_id,content,created_at')
+      .eq('user_id', id)
+      .in('conversation_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (messageError) throw messageError;
+    const latestByConversation = new Map<string, string>();
+    for (const message of messageRows || []) {
+      if (!latestByConversation.has(message.conversation_id)) latestByConversation.set(message.conversation_id, message.content);
+    }
+    for (const conversation of conversations) conversation.lastMessage = latestByConversation.get(conversation.id);
+  }
+  return { analyses, plans, assets, conversations };
+}
+
+export async function saveWorkspacePlan(
+  userId: string,
+  platform: string,
+  kind: 'distribution' | 'creator-plan',
+  title: string,
+  plan: any,
+  source?: Record<string, unknown>,
+): Promise<SavedPlan> {
+  const id = requireUserId(userId);
+  const payload = { kind, title: title.trim() || 'Saved strategy', plan, source: source || {} };
+  const { data, error } = await supabase.from('publishing_plans')
+    .insert({ user_id: id, platform, status: 'draft', payload })
+    .select('id,platform,status,payload,created_at,updated_at')
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id, platform: data.platform, status: data.status, payload: data.payload,
+    createdAt: data.created_at, updatedAt: data.updated_at,
+  };
+}
+
+export async function renameWorkspacePlan(userId: string, planId: string, title: string): Promise<SavedPlan> {
+  const id = requireUserId(userId);
+  const { data: current, error: readError } = await supabase.from('publishing_plans')
+    .select('id,platform,status,payload,created_at,updated_at')
+    .eq('id', planId).eq('user_id', id).single();
+  if (readError) throw readError;
+  const payload = { ...(current.payload || {}), title: title.trim() || 'Saved strategy' };
+  const { data, error } = await supabase.from('publishing_plans')
+    .update({ payload, updated_at: new Date().toISOString() })
+    .eq('id', planId).eq('user_id', id)
+    .select('id,platform,status,payload,created_at,updated_at').single();
+  if (error) throw error;
+  return { id: data.id, platform: data.platform, status: data.status, payload: data.payload, createdAt: data.created_at, updatedAt: data.updated_at };
+}
+
+export async function deleteWorkspacePlan(userId: string, planId: string): Promise<void> {
+  const id = requireUserId(userId);
+  const { error } = await supabase.from('publishing_plans').delete().eq('id', planId).eq('user_id', id);
+  if (error) throw error;
+}
+
+export async function deleteSavedAnalysis(userId: string, analysisId: string): Promise<void> {
+  const id = requireUserId(userId);
+  const { error } = await supabase.from('analyses').delete().eq('id', analysisId).eq('user_id', id);
+  if (error) throw error;
 }

@@ -272,7 +272,7 @@ function App() {
   async function extractVideoFrames(file: File): Promise<string[]> {
     const url = URL.createObjectURL(file);
     const video = document.createElement('video');
-    video.preload = 'auto';
+    video.preload = 'metadata';
     video.muted = true;
     video.src = url;
     try {
@@ -347,12 +347,20 @@ function App() {
         });
         setImageData(data);
       } else if (isVideo) {
-        const frames = await extractVideoFrames(file);
+        // Upload and sample frames at the same time so local video decoding
+        // does not add its full duration to the network upload wait.
+        const [storagePath, frames] = await Promise.all([
+          uploadMedia(user.userId, file),
+          extractVideoFrames(file).catch(() => [] as string[]),
+        ]);
+        if (!storagePath) throw new Error('The media upload did not return a storage location. Please upload it again.');
         setVideoFrames(frames);
+        setUploadedImageUrl(storagePath);
+      } else {
+        const storagePath = await uploadMedia(user.userId, file);
+        if (!storagePath) throw new Error('The media upload did not return a storage location. Please upload it again.');
+        setUploadedImageUrl(storagePath);
       }
-      const storagePath = await uploadMedia(user.userId, file);
-      if (!storagePath) throw new Error('The media upload did not return a storage location. Please upload it again.');
-      setUploadedImageUrl(storagePath);
     } catch (e: any) {
       setUploadedImageUrl('');
       setError(e?.message || 'We could not prepare this media. Please try another file.');

@@ -14,7 +14,6 @@ import {
   BarChart3,
   Bell,
   Bookmark,
-  FileText,
   Trash2,
   Pencil,
   Check,
@@ -836,7 +835,7 @@ function App() {
               generate={makeDistributionPlan}
             />
           )}
-          {view === 'Analytics' && <Analytics posts={ownPosts} />}
+          {view === 'Analytics' && <Analytics posts={ownPosts} planCount={libraryData.plans.filter(item => item.payload.kind === 'distribution').length} />}
           {view === 'TikTok Creator Lab' && <TikTokCreatorLab niche={tiktokNiche} setNiche={setTiktokNiche} audience={tiktokAudience} setAudience={setTiktokAudience} goal={tiktokGoal} setGoal={setTiktokGoal} format={tiktokFormat} setFormat={setTiktokFormat} region={tiktokRegion} setRegion={setTiktokRegion} plan={tiktokPlan} busy={busy} generate={generateTikTokPlan} />}
           {view === 'TikTok account' && user && <TikTokAccount user={user} />
           }{view === 'My profile' && (
@@ -2053,7 +2052,7 @@ function PlanResults({ plan }: any) {
   );
 }
 
-function Analytics({ posts }: { posts: Post[] }) {
+function Analytics({ posts, planCount }: { posts: Post[]; planCount: number }) {
   return (
     <>
       <PageHeading
@@ -2077,8 +2076,8 @@ function Analytics({ posts }: { posts: Post[] }) {
         <Stat
           icon={Target}
           label="Distribution plans"
-          value="Not tracked yet"
-          note="Plan history is coming next"
+          value={String(planCount)}
+          note="Saved distribution strategies"
         />
         <Stat
           icon={Activity}

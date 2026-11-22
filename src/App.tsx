@@ -109,6 +109,7 @@ type View =
   | 'AI activity'
   | 'My Library'
   | 'Admin finance'
+  | 'Admin management'
   | 'YouTube Discover'
   | 'TikTok Creator Lab'
   | 'TikTok account'
@@ -612,7 +613,7 @@ function App() {
         </div>
         <div className="workspace-label">WORKSPACE</div>
         <nav>
-          {(isAdmin ? [...nav, { label: 'Admin finance' as View, icon: ShieldCheck }] : nav).map(item => {
+          {(isAdmin ? [...nav, { label: 'Admin finance' as View, icon: ShieldCheck }, { label: 'Admin management' as View, icon: Users }] : nav).map(item => {
             const Icon = item.icon;
             return (
               <button
@@ -774,6 +775,9 @@ function App() {
           )}
           {view === 'Admin finance' && isAdmin && (
             <AdminFinanceDashboard />
+          )}
+          {view === 'Admin management' && isAdmin && user && (
+            <AdminManagementDashboard currentUserId={user.userId} />
           )}
           {view === 'Overview' && (
             <Overview profile={profile} posts={ownPosts} setView={setView} />
@@ -1065,6 +1069,129 @@ type AdminFinanceSummary = {
   userBreakdown: { userId: string; email: string; requests: number; estimatedSpendUsd: number; reservedUsd: number; committedUsd: number }[];
   dailyTrend: { date: string; committedUsd: number }[];
 };
+
+type AdminAccount = {
+  userId: string;
+  email: string;
+  grantedAt: string;
+  grantedBy: string;
+  isCurrentUser: boolean;
+};
+
+function AdminManagementDashboard({ currentUserId }: { currentUserId: string }) {
+  const [email, setEmail] = useState('');
+  const [administrators, setAdministrators] = useState<AdminAccount[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [revoking, setRevoking] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data, error: requestError } = await supabase.functions.invoke('admin-management', { body: { action: 'list' } });
+      if (requestError) throw requestError;
+      if (data?.error) throw new Error(data.error);
+      setAdministrators(data?.administrators || []);
+      setError('');
+    } catch (e: any) {
+      setError(e?.message || 'Administrator accounts could not be loaded.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  async function inviteAdmin(event: React.FormEvent) {
+    event.preventDefault();
+    if (!email.trim()) return;
+    setSaving(true); setError(''); setNotice('');
+    try {
+      const { data, error: requestError } = await supabase.functions.invoke('admin-management', {
+        body: { action: 'invite', email: email.trim() },
+      });
+      if (requestError) throw requestError;
+      if (data?.error) throw new Error(data.error);
+      setNotice(data?.message || 'Administrator access has been granted.');
+      setEmail('');
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'The administrator could not be invited.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function revokeAdmin(account: AdminAccount) {
+    if (account.isCurrentUser || administrators.length <= 1) return;
+    if (!window.confirm('Revoke administrator access for ' + account.email + '?')) return;
+    setRevoking(account.userId); setError(''); setNotice('');
+    try {
+      const { data, error: requestError } = await supabase.functions.invoke('admin-management', {
+        body: { action: 'revoke', userId: account.userId },
+      });
+      if (requestError) throw requestError;
+      if (data?.error) throw new Error(data.error);
+      setNotice('Administrator access revoked for ' + account.email + '.');
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || 'Administrator access could not be revoked.');
+    } finally {
+      setRevoking('');
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow="RESTRICTED · ADMINISTRATOR"
+        title="Administrator access."
+        subtitle="Invite trusted team members and control who can access NTWRKH’s platform administration tools."
+        action={<button className="text-btn" onClick={() => void refresh()} disabled={loading}><Activity size={15} /> Refresh list</button>}
+      />
+      {error && <div className="error-box">{error}</div>}
+      {notice && <div className="admin-management-notice"><ShieldCheck size={16} /> {notice}</div>}
+      <div className="panel admin-invite-panel">
+        <div className="admin-management-heading">
+          <div className="admin-management-icon"><Users size={18} /></div>
+          <div><h3>Invite an administrator</h3><p>Send an email invitation or grant access to an existing NTWRKH account.</p></div>
+        </div>
+        <form className="admin-invite-form" onSubmit={inviteAdmin}>
+          <input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="teammate@example.com" required autoComplete="email" />
+          <button className="primary-btn" type="submit" disabled={saving || !email.trim()}>
+            {saving ? <Loader2 className="spin" size={16} /> : <Plus size={16} />}
+            {saving ? 'Sending invite…' : 'Invite administrator'}
+          </button>
+        </form>
+        <p className="admin-management-footnote">New users must accept the Supabase email invitation before they can sign in. Existing accounts receive administrator access immediately.</p>
+      </div>
+      <div className="panel admin-management-list">
+        <div className="panel-head"><div><h3>Administrators</h3><p>Accounts with access to restricted platform controls</p></div><span className="admin-count">{administrators.length}</span></div>
+        {loading ? <div className="admin-management-empty"><Loader2 className="spin" size={18} /> Loading administrators…</div> :
+          administrators.length === 0 ? <div className="admin-management-empty">No administrator accounts were returned.</div> :
+          <div className="admin-account-list">
+            {administrators.map(account => (
+              <div className="admin-account-row" key={account.userId}>
+                <div className="admin-account-avatar"><ShieldCheck size={16} /></div>
+                <div className="admin-account-copy">
+                  <strong>{account.email}</strong>
+                  <span>{account.isCurrentUser ? 'You · Current administrator' : 'Administrator'} · Added {new Date(account.grantedAt).toLocaleDateString()}</span>
+                </div>
+                {account.isCurrentUser ? <span className="admin-self-label">You</span> :
+                  <button className="admin-revoke-btn" onClick={() => void revokeAdmin(account)} disabled={Boolean(revoking) || administrators.length <= 1}>
+                    {revoking === account.userId ? <Loader2 className="spin" size={14} /> : <Trash2 size={14} />}
+                    Revoke
+                  </button>}
+              </div>
+            ))}
+          </div>}
+        <p className="admin-management-footnote">Your own access cannot be revoked here, and the final administrator account is protected against removal.</p>
+      </div>
+    </>
+  );
+}
 
 function AdminFinanceDashboard() {
   const [summary, setSummary] = useState<AdminFinanceSummary | null>(null);

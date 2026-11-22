@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
   getSession, mapUser, signInWithGoogle, signOut as supabaseSignOut,
   loadProfile, loadPosts, loadChat, loadLibrary, saveWorkspacePlan, renameWorkspacePlan, deleteWorkspacePlan, deleteSavedAnalysis, saveProfile as persistProfile,
@@ -1104,7 +1104,7 @@ function AdminManagementDashboard({ currentUserId }: { currentUserId: string }) 
 
   useEffect(() => { void refresh(); }, [refresh]);
 
-  async function inviteAdmin(event: React.FormEvent) {
+  async function inviteAdmin(event: FormEvent) {
     event.preventDefault();
     if (!email.trim()) return;
     setSaving(true); setError(''); setNotice('');

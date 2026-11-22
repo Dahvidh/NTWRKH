@@ -1964,3 +1964,26 @@ button:disabled {
 .library-rename{display:flex;gap:7px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
 .library-rename input{min-width:0;flex:1;background:#0c111c;border:1px solid #343c50;border-radius:8px;padding:8px 10px;color:#f3f4f8;font:12px 'DM Sans',sans-serif}
 @media(max-width:760px){.library-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.library-grid{grid-template-columns:1fr}.library-card{padding:15px}.library-card-meta{align-items:flex-start}.library-card-meta time{max-width:48%}}
+
+/* Administrator access management */
+.admin-invite-panel,.admin-management-list{padding:22px;margin:18px 0}
+.admin-management-heading{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.admin-management-icon,.admin-account-avatar{width:40px;height:40px;border-radius:12px;background:#28213f;color:#bba7ff;display:grid;place-items:center;flex:none}
+.admin-management-heading h3,.admin-management-list .panel-head h3{margin:0 0 5px;color:#f2f3f8;font:700 15px Manrope,sans-serif}
+.admin-management-heading p,.admin-management-list .panel-head p{margin:0;color:#929bad;font-size:12px;line-height:1.55}
+.admin-invite-form{display:flex;gap:10px;align-items:center}
+.admin-invite-form input{min-width:0;flex:1;background:#0c111c;border:1px solid #30394b;border-radius:9px;padding:12px 13px;color:#f3f4f8;font:13px 'DM Sans',sans-serif;outline:none}
+.admin-invite-form input:focus{border-color:#8c73dc;box-shadow:0 0 0 3px #8c73dc20}
+.admin-management-footnote{font-size:11px;line-height:1.6;color:#818a9d;margin:13px 0 0}
+.admin-management-notice{display:flex;align-items:center;gap:9px;padding:12px 14px;border:1px solid #28483e;background:#10251f;color:#a6e1c5;border-radius:10px;font-size:12px;margin:15px 0}
+.admin-count{min-width:30px;height:30px;padding:0 8px;display:grid;place-items:center;border-radius:9px;background:#292343;color:#d9ceff;font-size:12px;font-weight:700}
+.admin-management-empty{min-height:100px;display:flex;align-items:center;justify-content:center;gap:9px;color:#929bad;font-size:12px}
+.admin-account-list{display:grid}
+.admin-account-row{display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid #242b39}
+.admin-account-copy{min-width:0;flex:1;display:grid;gap:5px}
+.admin-account-copy strong{font-size:13px;color:#f0f2f8;overflow-wrap:anywhere}
+.admin-account-copy span{font-size:11px;color:#8992a5}
+.admin-self-label{font-size:10px;color:#b9a8ff;background:#292343;padding:6px 9px;border-radius:99px}
+.admin-revoke-btn{display:flex;align-items:center;gap:6px;border:1px solid #56323b;background:#25161d;color:#f0aab4;border-radius:8px;padding:8px 10px;font-size:11px;font-weight:700}
+.admin-revoke-btn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:600px){.admin-invite-panel,.admin-management-list{padding:16px}.admin-invite-form{align-items:stretch;flex-direction:column}.admin-invite-form input,.admin-invite-form button{width:100%;min-height:44px}.admin-account-row{gap:9px}.admin-account-copy span{line-height:1.45}.admin-revoke-btn{padding:8px}}

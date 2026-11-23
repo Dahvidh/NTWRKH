@@ -178,6 +178,8 @@ function App() {
   const [youtubeBusy, setYoutubeBusy] = useState(false);
   const [youtubeSearched, setYoutubeSearched] = useState(false);
   const [youtubeError, setYoutubeError] = useState('');
+  const [youtubeChannel, setYoutubeChannel] = useState<any>(null);
+  const [youtubeConnecting, setYoutubeConnecting] = useState(false);
 
   async function loadWorkspace(currentUser: User) {
     const [nextProfile, nextPosts, nextMessages, nextLibrary] = await Promise.all([
@@ -202,11 +204,16 @@ function App() {
 
   useEffect(() => {
     let active = true;
-    getSession().then(async ({ user: restored }) => {
+    getSession().then(async ({ user: restored, session }) => {
       if (!active) return;
       setGoogleConfigured(true);
       setTiktokConfigured(false);
       setUser(restored);
+      if (session?.provider_token) {
+        invokeAI<{ channels: any[] }>('youtube-channel', { accessToken: session.provider_token })
+          .then(result => setYoutubeChannel(result.channels?.[0] || null))
+          .catch(() => setYoutubeChannel(null));
+      }
       if (restored) {
         try { await loadWorkspace(restored); }
         catch { setError('We could not load your workspace. Please refresh and try again.'); }
@@ -225,7 +232,14 @@ function App() {
       if (!active) return;
       const nextUser = session?.user ? mapUser(session.user) : null;
       setUser(nextUser);
-      if (nextUser) loadWorkspace(nextUser).catch(() => setError('We could not load your workspace. Please refresh and try again.'));
+      if (nextUser) {
+        loadWorkspace(nextUser).catch(() => setError('We could not load your workspace. Please refresh and try again.'));
+        if (session?.provider_token) {
+          invokeAI<{ channels: any[] }>('youtube-channel', { accessToken: session.provider_token })
+            .then(result => setYoutubeChannel(result.channels?.[0] || null))
+            .catch(() => setYoutubeChannel(null));
+        }
+      }
       else { setPosts([]); setProfile({}); setChatMessages([]); setLibraryData({ analyses: [], plans: [], assets: [], conversations: [] }); }
     });
     return () => { active = false; listener.subscription.unsubscribe(); };
@@ -482,6 +496,25 @@ function App() {
       setError(e?.message || 'Audience recommendations are temporarily unavailable. Please try again.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function connectYouTube() {
+    setYoutubeConnecting(true);
+    setYoutubeError('');
+    try {
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session?.provider_token) throw new Error('Your Google session has no YouTube access token. Sign out and sign in again with Google, then approve YouTube read access.');
+      const result = await invokeAI<{ channels: any[] }>('youtube-channel', { accessToken: session.provider_token });
+      const channel = result.channels?.[0];
+      if (!channel) throw new Error('No YouTube channel was found for this Google account. Make sure the account owns or manages a YouTube channel.');
+      setYoutubeChannel(channel);
+      setNotice(`Connected YouTube channel: ${channel.title}`);
+    } catch (e: any) {
+      setYoutubeError(e?.message || 'We could not connect your YouTube channel.');
+    } finally {
+      setYoutubeConnecting(false);
     }
   }
 
@@ -802,6 +835,9 @@ function App() {
               busy={youtubeBusy}
               searched={youtubeSearched}
               error={youtubeError}
+              channel={youtubeChannel}
+              connecting={youtubeConnecting}
+              connect={connectYouTube}
               search={searchYouTube}
             />
           )}
@@ -1276,7 +1312,7 @@ function AdminFinanceDashboard() {
   );
 }
 
-function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, region, setRegion, results, busy, searched, error, search }: any) {
+function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, region, setRegion, results, busy, searched, error, channel, connecting, connect, search }: any) {
   const formatCount = (value: string | number) => {
     if (value === '' || value === undefined || value === null) return 'Not public';
     const number = Number(value);
@@ -1290,6 +1326,17 @@ function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, regi
         subtitle="Find relevant videos and creators using YouTube's public data. Search results are discovery signals, not endorsements or guaranteed performance."
       />
       <div className="panel youtube-search-panel">
+        <div className="youtube-channel-connect">
+          <div className="youtube-channel-connect-copy">
+            <strong>{channel ? 'YouTube channel connected' : 'Connect your YouTube channel'}</strong>
+            <span>{channel ? channel.title : 'Connect the channel you own or manage so NTWRKH can build a distribution workflow around your real content.'}</span>
+            {channel?.customUrl && <small>{channel.customUrl.startsWith('@') ? channel.customUrl : '@' + channel.customUrl}</small>}
+          </div>
+          <button className={channel ? 'secondary-btn' : 'primary-btn'} type="button" onClick={connect} disabled={connecting}>
+            {connecting ? <Loader2 className="spin" size={15} /> : <Youtube size={16} />}
+            {connecting ? 'Connecting…' : channel ? 'Refresh connection' : 'Connect YouTube'}
+          </button>
+        </div>
         <div className="youtube-search-top">
           <div className="youtube-search-brand"><Youtube size={20} /><span>YOUTUBE DISCOVERY</span></div>
           <span className="youtube-api-note"><i /> Public data via YouTube Data API</span>

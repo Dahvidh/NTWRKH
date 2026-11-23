@@ -2148,18 +2148,22 @@ function PlanResults({ plan }: any) {
           <h4>
             <Compass size={16} /> Places to explore
           </h4>
-          {(plan.channels || []).map((x: any, i: number) => (
+          {plan.channels?.length ? plan.channels.map((x: any, i: number) => (
             <div className="recommendation-item" key={i}>
               <strong>{x.name || x}</strong>
-              <p>
-                {x.reason ||
-                  'Explore this channel and check its community guidelines.'}
-              </p>
+              <p>{x.reason || 'Explore this channel and check its community guidelines.'}</p>
+              <a className="text-btn" href={`https://www.google.com/search?q=${encodeURIComponent(String(x.name || x))}`} target="_blank" rel="noopener noreferrer">Research this route <ExternalLink size={13} /></a>
+            </div>
+          )) : (plan.communities || []).map((item: any, i: number) => (
+            <div className="recommendation-item" key={i}>
+              <strong>{item.name} · {item.platform}</strong>
+              <p>{item.approach}</p>
+              <a className="text-btn" href={`https://www.google.com/search?q=${encodeURIComponent(`${item.name} ${item.platform} community`)}`} target="_blank" rel="noopener noreferrer">Research this community <ExternalLink size={13} /></a>
             </div>
           ))}
         </div>
       </div>
-      {plan.communities?.length > 0 && <div className="distribution-section"><h3>Relevant communities</h3>{plan.communities.map((item: any, i: number) => <div className="recommendation-item" key={i}><strong>{item.name} · {item.platform}</strong><p>{item.approach}</p></div>)}</div>}
+
       {plan.creatorTypes?.length > 0 && <div className="distribution-section"><h3>Creator types to research</h3>{plan.creatorTypes.map((item: any, i: number) => <div className="recommendation-item" key={i}><strong>{item.type}</strong><p>{item.why} {item.outreachAngle}</p></div>)}</div>}
       <div className="next-steps">
         <h4>

@@ -1379,7 +1379,7 @@ function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, regi
                 <p className="youtube-channel">{type === 'video' ? item.channelTitle : (item.customUrl ? '@' + item.customUrl.replace(/^@/, '') : 'YouTube channel')}</p>
                 <p className="youtube-description">{item.description || 'No description provided.'}</p>
                 <div className="youtube-result-stats">
-                  {type === 'video' ? <span><Eye size={13} /> {formatCount(item.viewCount)} views</span> : <><span><Users size={13} /> {item.subscriberCount ? formatCount(item.subscriberCount) + ' subscribers' : 'Subscribers hidden'}</span><span>{formatCount(item.videoCount)} videos</span></>}
+                  {type === 'video' ? <><span><Eye size={13} /> {formatCount(item.viewCount)} views</span>{item.subscriberCount && <span><Users size={13} /> {formatCount(item.subscriberCount)} subscribers</span>}{item.likeCount && <span><Heart size={13} /> {formatCount(item.likeCount)} likes</span>}</> : <><span><Users size={13} /> {item.subscriberCount ? formatCount(item.subscriberCount) + ' subscribers' : 'Subscribers hidden'}</span><span>{formatCount(item.videoCount)} videos</span><span><Eye size={13} /> {formatCount(item.viewCount)} views</span></>}
                   <a href={item.url} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={12} /></a>
                 </div>
               </div>

@@ -561,8 +561,7 @@ function App() {
               Your content deserves to find <em>its people.</em>
             </h1>
             <p>
-              Understand your content, discover relevant audiences and get
-              smarter recommendations for where to share next.
+              Connect your social accounts. NTWRKH reads your content and hashtags, maps relevant audiences and discovers the best available routes to reach them.
             </p>
             <div className="auth-points">
               <span>
@@ -572,7 +571,7 @@ function App() {
                 <Check size={15} /> Audience discovery
               </span>
               <span>
-                <Check size={15} /> Practical distribution plans
+                <Check size={15} /> Hashtag-led distribution routes
               </span>
             </div>
           </div>

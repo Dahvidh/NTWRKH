@@ -302,7 +302,7 @@ export async function invokeAI<T>(action: string, payload: Record<string, unknow
   const requestId = crypto.randomUUID();
 
   // YouTube search is a read-only API lookup, not a billable generative AI job.
-  if (action === 'youtube-search') {
+  if (action === 'youtube-search' || action === 'youtube-channel') {
     const { data, error } = await supabase.functions.invoke('ntwrkh-ai', {
       body: { action, ...payload, requestId },
     });

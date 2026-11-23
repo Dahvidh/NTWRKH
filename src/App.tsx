@@ -22,6 +22,7 @@ import {
   FileImage,
   Filter,
   Hash,
+  Heart,
   Home,
   Lightbulb,
   Loader2,

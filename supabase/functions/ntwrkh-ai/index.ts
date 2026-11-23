@@ -250,6 +250,29 @@ Deno.serve(async (req) => {
       return json(result);
     }
 
+    if (action === "youtube-channel") {
+      const accessToken = String(input.accessToken || "");
+      if (!accessToken || accessToken.length < 20) return json({ error: "A valid Google YouTube access token is required." }, 401);
+      const response = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const message = data?.error?.message || "YouTube could not verify this channel.";
+        return json({ error: message }, response.status === 401 || response.status === 403 ? response.status : 502);
+      }
+      return json({ channels: (data.items || []).map((item: any) => ({
+        id: item.id,
+        title: item.snippet?.title || "YouTube channel",
+        description: item.snippet?.description || "",
+        customUrl: item.snippet?.customUrl || "",
+        thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "",
+        subscriberCount: item.statistics?.hiddenSubscriberCount ? null : item.statistics?.subscriberCount || null,
+        videoCount: item.statistics?.videoCount || "0",
+        viewCount: item.statistics?.viewCount || "0",
+      })) });
+    }
+
     if (action === "youtube-search") {
       const key = Deno.env.get("YOUTUBE_API_KEY");
       if (!key) return json({ error: "YouTube search is not configured. Add YOUTUBE_API_KEY to Supabase function secrets." }, 503);

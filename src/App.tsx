@@ -234,11 +234,6 @@ function App() {
       setUser(nextUser);
       if (nextUser) {
         loadWorkspace(nextUser).catch(() => setError('We could not load your workspace. Please refresh and try again.'));
-        if (session?.provider_token) {
-          invokeAI<{ channels: any[] }>('youtube-channel', { accessToken: session.provider_token })
-            .then(result => setYoutubeChannel(result.channels?.[0] || null))
-            .catch(() => setYoutubeChannel(null));
-        }
       }
       else { setPosts([]); setProfile({}); setChatMessages([]); setLibraryData({ analyses: [], plans: [], assets: [], conversations: [] }); }
     });

@@ -94,7 +94,7 @@ async function callOpenAI(action: string, p: Record<string, any>) {
     ];
   } else if (action === "distribution") {
     messages = [
-      { role: "system", content: "Build a useful, specific content distribution plan matching NTWRKH's interface: grouped hashtag recommendations, likely audience segments, relevant communities with platform and participation approach, creator account types worth researching, practical actions, and cautions. Do not claim live trend or account analytics access or invent creator handles." },
+      { role: "system", content: "You are the discovery brain of NTWRKH, a hashtag-led social distribution bot. Treat the user's existing hashtags and mentions as seed signals, not proof that the tagged audiences saw the post. Explain which audience interests each seed hashtag represents, group relevant hashtags by intent and niche, identify adjacent hashtag communities, and give a concrete platform-aware route for getting the content in front of people likely to care. Distinguish user-supplied hashtags from newly suggested ones. Do not invent live hashtag volumes, trending status, accounts, communities, or verified audience data. Do not claim that content has been pushed into feeds or that users have been reached. State which actions require platform API permission or explicit user approval." },
       { role: "user", content: `Niche: ${p.niche || "General"}\nTopic: ${p.topic || "Not supplied"}\nContent: ${p.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(p.hashtags || [])}\nExisting mentions: ${JSON.stringify(p.mentions || [])}` },
     ]; schemaName = "distribution_plan"; schema = planSchema;
   } else if (action === "tiktok-plan") {
@@ -186,7 +186,7 @@ async function callGemini(action: string, p: Record<string, any>, modelOverride?
       { role: "user", parts: [{ text: String(p.message || "") }] },
     ];
   } else if (action === "distribution") {
-    systemInstruction = "Build a useful, specific content distribution plan that matches NTWRKH's interface. Return grouped hashtag recommendations, likely audience segments, relevant communities with platform and participation approach, creator account types worth researching, practical actions, and cautions. Do not claim live trend or account analytics access. Do not invent specific creator handles or claim verified communities without evidence.";
+    systemInstruction = "You are the discovery brain of NTWRKH, a hashtag-led social distribution bot. Treat the user's existing hashtags and mentions as seed signals, not proof that the tagged audiences saw the post. Explain which audience interests each seed hashtag represents, group relevant hashtags by intent and niche, identify adjacent hashtag communities, and give a concrete platform-aware route for getting the content in front of people likely to care. Distinguish user-supplied hashtags from newly suggested ones. Do not invent live hashtag volumes, trending status, accounts, communities, or verified audience data. Do not claim that content has been pushed into feeds or that users have been reached. State which actions require platform API permission or explicit user approval.";
     contents = [{
       role: "user",
       parts: [{ text: `Niche: ${p.niche || "General"}\nTopic: ${p.topic || "Not supplied"}\nContent: ${p.content || "Not supplied"}\nExisting hashtags: ${JSON.stringify(p.hashtags || [])}\nExisting mentions: ${JSON.stringify(p.mentions || [])}` }],

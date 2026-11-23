@@ -330,7 +330,7 @@ Deno.serve(async (req) => {
           viewCount: statistics.viewCount || null, likeCount: statistics.likeCount || null, commentCount: statistics.commentCount || null,
           duration: detail.contentDetails?.duration || null,
           subscriberCount: channelStatistics.hiddenSubscriberCount ? null : channelStatistics.subscriberCount || null,
-          channelVideoCount: channelStatistics.videoCount || null, channelViewCount: channelStatistics.viewCount || null,
+          videoCount: channelStatistics.videoCount || null, channelVideoCount: channelStatistics.videoCount || null, channelViewCount: channelStatistics.viewCount || null,
         };
       });
       return json({ results, query, nextPageToken: searchData.nextPageToken || null, totalResults: Number(searchData.pageInfo?.totalResults || 0) });

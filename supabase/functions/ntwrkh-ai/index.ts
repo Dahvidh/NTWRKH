@@ -276,24 +276,65 @@ Deno.serve(async (req) => {
     if (action === "youtube-search") {
       const key = Deno.env.get("YOUTUBE_API_KEY");
       if (!key) return json({ error: "YouTube search is not configured. Add YOUTUBE_API_KEY to Supabase function secrets." }, 503);
-      const url = new URL("https://www.googleapis.com/youtube/v3/search");
-      url.search = new URLSearchParams({
-        part: "snippet", q: String(input.q || ""), type: input.type === "channel" ? "channel" : "video",
-        order: String(input.order || "relevance"),
-        maxResults: String(Math.min(25, Math.max(1, Number(input.maxResults) || 12))), key,
-        ...(input.regionCode ? { regionCode: String(input.regionCode).slice(0, 2).toUpperCase() } : {}),
-      }).toString();
-      const response = await fetch(url);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error?.message || "YouTube search failed.");
-      return json({ results: (data.items || []).map((item: any) => ({
-        id: item.id?.videoId || item.id?.channelId, type: item.id?.kind?.includes("channel") ? "channel" : "video",
-        title: item.snippet?.title || "", description: item.snippet?.description || "",
-        thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || "",
-        channelTitle: item.snippet?.channelTitle || "", publishedAt: item.snippet?.publishedAt || "",
-      })) });
+      const query = String(input.q || "").trim().slice(0, 300);
+      if (!query) return json({ error: "Enter a topic, hashtag or keyword to search YouTube." }, 400);
+      const type = input.type === "channel" ? "channel" : "video";
+      const maxResults = Math.min(25, Math.max(1, Number(input.maxResults) || 12));
+      const params = new URLSearchParams({ part: "snippet", q: query, type, order: ["relevance", "date", "viewCount", "rating"].includes(String(input.order)) ? String(input.order) : "relevance", maxResults: String(maxResults), key });
+      const regionCode = String(input.regionCode || "").trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(regionCode)) params.set("regionCode", regionCode);
+      const searchResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?${params.toString()}`);
+      const searchData = await searchResponse.json();
+      if (!searchResponse.ok) {
+        const message = searchData?.error?.message || "YouTube search failed.";
+        return json({ error: message, code: searchData?.error?.errors?.[0]?.reason || "YOUTUBE_SEARCH_FAILED" }, searchResponse.status === 403 ? 503 : 502);
+      }
+      const items = Array.isArray(searchData.items) ? searchData.items : [];
+      const ids = items.map((item: any) => type === "channel" ? item.id?.channelId : item.id?.videoId).filter(Boolean);
+      if (!ids.length) return json({ results: [], query, nextPageToken: searchData.nextPageToken || null, totalResults: Number(searchData.pageInfo?.totalResults || 0) });
+      const detailParams = new URLSearchParams({ part: type === "video" ? "snippet,statistics,contentDetails" : "snippet,statistics", id: ids.join(","), key });
+      const detailEndpoint = type === "video" ? "videos" : "channels";
+      const detailResponse = await fetch(`https://www.googleapis.com/youtube/v3/${detailEndpoint}?${detailParams.toString()}`);
+      const detailData = await detailResponse.json();
+      if (!detailResponse.ok) {
+        console.error("YouTube detail enrichment failed", detailData?.error?.message || detailResponse.status);
+        return json({ error: detailData?.error?.message || "YouTube could not load discovery details." }, 502);
+      }
+      const detailsById = new Map((detailData.items || []).map((item: any) => [item.id, item]));
+      let channelStats = new Map<string, any>();
+      if (type === "video") {
+        const channelIds = [...new Set(items.map((item: any) => item.snippet?.channelId).filter(Boolean))];
+        if (channelIds.length) {
+          const channelParams = new URLSearchParams({ part: "snippet,statistics", id: channelIds.join(","), key });
+          const channelResponse = await fetch(`https://www.googleapis.com/youtube/v3/channels?${channelParams.toString()}`);
+          const channelData = await channelResponse.json();
+          if (channelResponse.ok) channelStats = new Map((channelData.items || []).map((item: any) => [item.id, item]));
+        }
+      }
+      const results = items.map((item: any) => {
+        const id = type === "channel" ? item.id?.channelId : item.id?.videoId;
+        const detail: any = detailsById.get(id) || {};
+        const channel: any = type === "video" ? channelStats.get(item.snippet?.channelId) || {} : detail;
+        const snippet = detail.snippet || item.snippet || {};
+        const statistics = detail.statistics || {};
+        const channelStatistics = channel.statistics || {};
+        return {
+          id, type, title: snippet.title || item.snippet?.title || "",
+          description: snippet.description || item.snippet?.description || "",
+          thumbnail: snippet.thumbnails?.high?.url || snippet.thumbnails?.medium?.url || snippet.thumbnails?.default?.url || item.snippet?.thumbnails?.medium?.url || "",
+          channelTitle: item.snippet?.channelTitle || snippet.title || "",
+          channelId: item.snippet?.channelId || id,
+          channelUrl: `https://www.youtube.com/channel/${item.snippet?.channelId || id}` ,
+          url: type === "video" ? `https://www.youtube.com/watch?v=${id}` : `https://www.youtube.com/channel/${id}` ,
+          customUrl: snippet.customUrl || "", publishedAt: item.snippet?.publishedAt || snippet.publishedAt || "",
+          viewCount: statistics.viewCount || null, likeCount: statistics.likeCount || null, commentCount: statistics.commentCount || null,
+          duration: detail.contentDetails?.duration || null,
+          subscriberCount: channelStatistics.hiddenSubscriberCount ? null : channelStatistics.subscriberCount || null,
+          channelVideoCount: channelStatistics.videoCount || null, channelViewCount: channelStatistics.viewCount || null,
+        };
+      });
+      return json({ results, query, nextPageToken: searchData.nextPageToken || null, totalResults: Number(searchData.pageInfo?.totalResults || 0) });
     }
-
     return json({ error: "Unknown NTWRKH action." }, 400);
   } catch (error) {
     if (error instanceof ProviderError) {

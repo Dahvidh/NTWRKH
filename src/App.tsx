@@ -1310,65 +1310,59 @@ function AdminFinanceDashboard() {
 
 function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, region, setRegion, results, busy, searched, error, channel, connecting, connect, search }: any) {
   const formatCount = (value: string | number) => {
-    if (value === '' || value === undefined || value === null) return 'Not public';
+    if (value === '' || value === undefined || value === null) return 'Not publicly shown';
     const number = Number(value);
     return Number.isFinite(number) ? new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(number) : String(value);
   };
   return (
     <>
       <PageHeading
-        eyebrow="YOUTUBE CONTENT INTELLIGENCE"
-        title="Discover beyond your feed."
-        subtitle="Find relevant videos and creators using YouTube's public data. Search results are discovery signals, not endorsements or guaranteed performance."
+        eyebrow="FIND YOUR CONTENT'S AUDIENCE"
+        title="Find videos and creators your audience already watches."
+        subtitle="Tell NTWRKH what your content is about. We look across YouTube for videos and channels covering the same interests, so you can see where your content may fit."
       />
       <div className="panel youtube-search-panel">
         <div className="youtube-channel-connect">
           <div className="youtube-channel-connect-copy">
-            <strong>{channel ? 'YouTube channel connected' : 'Connect your YouTube channel'}</strong>
-            <span>{channel ? channel.title : 'Connect the channel you own or manage so NTWRKH can build a distribution workflow around your real content.'}</span>
+            <strong>{channel ? 'Your YouTube channel is connected' : 'Connect your YouTube channel (optional)'}</strong>
+            <span>{channel ? `NTWRKH has identified your channel: ${channel.title}.` : 'This identifies your own channel. You can still search YouTube without connecting it.'}</span>
             {channel?.customUrl && <small>{channel.customUrl.startsWith('@') ? channel.customUrl : '@' + channel.customUrl}</small>}
           </div>
           <button className={channel ? 'secondary-btn' : 'primary-btn'} type="button" onClick={connect} disabled={connecting}>
             {connecting ? <Loader2 className="spin" size={15} /> : <Youtube size={16} />}
-            {connecting ? 'Connecting…' : channel ? 'Refresh connection' : 'Connect YouTube'}
+            {connecting ? 'Connecting…' : channel ? 'Refresh channel' : 'Connect my channel'}
           </button>
         </div>
-        <div className="youtube-search-top">
-          <div className="youtube-search-brand"><Youtube size={20} /><span>YOUTUBE DISCOVERY</span></div>
-          <span className="youtube-api-note"><i /> Public data via YouTube Data API</span>
+        <div className="youtube-howto" aria-label="How YouTube discovery works">
+          <div><span>1</span><strong>Describe your content</strong><p>Enter its subject, niche or hashtags.</p></div>
+          <div><span>2</span><strong>Find similar interests</strong><p>NTWRKH searches public YouTube videos or channels.</p></div>
+          <div><span>3</span><strong>Choose where to focus</strong><p>Review the results and open promising matches.</p></div>
         </div>
         <form className="youtube-search-form" onSubmit={e => { e.preventDefault(); search(); }}>
-          <div className="youtube-query-field"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Search a topic, niche, keyword or creator..." aria-label="Search YouTube" /></div>
-          <button className="primary-btn" type="submit" disabled={busy || query.trim().length < 2}>{busy ? <Loader2 className="spin" size={16} /> : <Search size={16} />} Search</button>
+          <div className="youtube-query-field"><Search size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="Example: Nigerian skincare, streetwear, football analysis…" aria-label="Describe your content topic" /></div>
+          <button className="primary-btn" type="submit" disabled={busy || query.trim().length < 2}>{busy ? <Loader2 className="spin" size={16} /> : <Search size={16} />} Find matches</button>
         </form>
         <div className="youtube-search-options">
           <div className="youtube-tabs">
-            <button type="button" className={type === 'video' ? 'active' : ''} onClick={() => setType('video')}><PlayCircle size={15} /> Videos</button>
-            <button type="button" className={type === 'channel' ? 'active' : ''} onClick={() => setType('channel')}><Users size={15} /> Creators & channels</button>
+            <button type="button" className={type === 'video' ? 'active' : ''} onClick={() => setType('video')}><PlayCircle size={15} /> Videos like my topic</button>
+            <button type="button" className={type === 'channel' ? 'active' : ''} onClick={() => setType('channel')}><Users size={15} /> Creators in my topic</button>
           </div>
           <div className="youtube-filters">
-            <label>Sort
-              <select value={order} onChange={e => setOrder(e.target.value)}>
-                <option value="relevance">Most relevant</option>
-                <option value="viewCount">Most viewed</option>
-                <option value="date">Newest</option>
-              </select>
-            </label>
-            <label>Region
-              <input value={region} onChange={e => setRegion(e.target.value.toUpperCase().slice(0, 2))} placeholder="Any" maxLength={2} />
-            </label>
+            <label>Show me<select value={order} onChange={e => setOrder(e.target.value)}><option value="relevance">Closest topic matches</option><option value="viewCount">Most watched first</option><option value="date">Recently published first</option></select></label>
+            <label>Country (optional)<input value={region} onChange={e => setRegion(e.target.value.toUpperCase().slice(0, 2))} placeholder="Any country" maxLength={2} /></label>
           </div>
         </div>
+        <p className="youtube-plain-note"><strong>In simple terms:</strong> NTWRKH is looking for places where people already watch or create content about your subject. These search results are not proof that those viewers have seen your post.</p>
       </div>
       {error && <div className="error-box youtube-error">{error}</div>}
       {busy ? (
-        <div className="panel youtube-empty"><Loader2 className="spin" size={24} /><strong>Searching YouTube…</strong><span>Finding relevant public videos and channels.</span></div>
+        <div className="panel youtube-empty"><Loader2 className="spin" size={24} /><strong>Looking for matching content…</strong><span>Checking public YouTube videos and channels for your topic.</span></div>
       ) : results.length ? (
-        <div className="youtube-results-heading"><div><span className="eyebrow">DISCOVERY RESULTS</span><h2>{results.length} {type === 'video' ? 'videos' : 'channels'} for “{query}”</h2></div><span>Public YouTube data</span></div>
+        <><div className="youtube-results-heading"><div><span className="eyebrow">WHAT WE FOUND</span><h2>{results.length} {type === 'video' ? 'videos' : 'channels'} related to “{query}”</h2></div><span>Public YouTube information</span></div><p className="youtube-results-explainer">These are existing YouTube {type === 'video' ? 'videos' : 'creators'} about a similar subject. Open a result to learn more and decide whether it is a good fit for your content.</p></>
       ) : searched && !error ? (
-        <div className="panel youtube-empty"><Search size={24} /><strong>No matching results found</strong><span>Try a broader keyword, niche or creator name.</span></div>
+        <div className="panel youtube-empty"><Search size={24} /><strong>We couldn't find a close match</strong><span>Try a shorter or broader description. For example, search “skincare” instead of a very specific product name.</span></div>
       ) : (
-        <div className="panel youtube-empty"><div className="youtube-empty-icon"><Youtube size={24} /></div><strong>What do you want to discover?</strong><span>Search a topic to find videos or switch to creators to explore relevant channels.</span><div className="youtube-examples">{['Nigerian tech creators', 'football analysis', 'small business marketing'].map(term => <button key={term} onClick={() => { setQuery(term); }}>{term}</button>)}</div></div>
+        <div className="panel youtube-empty"><div className="youtube-empty-icon"><Youtube size={24} /></div><strong>Start with the subject of your post</strong><span>For example, tell us what your video teaches, shows, sells or talks about.</span><div className="youtube-examples">{['Nigerian skincare routines', 'Affordable fashion in Lagos', 'Football analysis'].map(term => <button key={term} type="button" onClick={() => setQuery(term)}>{term}</button>)}</div></div>
       )}
       {results.length > 0 && !busy && (
         <div className="youtube-results-grid">
@@ -1377,11 +1371,11 @@ function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, regi
               {item.thumbnail ? <a href={item.url} target="_blank" rel="noreferrer" className="youtube-thumb"><img src={item.thumbnail} alt="" loading="lazy" /><span>{type === 'video' ? <PlayCircle size={22} /> : <Youtube size={22} />}</span></a> : <div className="youtube-thumb youtube-thumb-empty"><Youtube size={28} /></div>}
               <div className="youtube-result-copy">
                 <h3><a href={item.url} target="_blank" rel="noreferrer">{item.title}</a></h3>
-                <p className="youtube-channel">{type === 'video' ? item.channelTitle : (item.customUrl ? '@' + item.customUrl.replace(/^@/, '') : 'YouTube channel')}</p>
-                <p className="youtube-description">{item.description || 'No description provided.'}</p>
+                <p className="youtube-channel">{type === 'video' ? `Posted by ${item.channelTitle || 'a YouTube creator'}` : (item.customUrl ? '@' + item.customUrl.replace(/^@/, '') : 'YouTube creator')}</p>
+                <p className="youtube-description">{item.description || 'The creator has not added a description.'}</p>
                 <div className="youtube-result-stats">
-                  {type === 'video' ? <><span><Eye size={13} /> {formatCount(item.viewCount)} views</span>{item.subscriberCount && <span><Users size={13} /> {formatCount(item.subscriberCount)} subscribers</span>}{item.likeCount && <span><Heart size={13} /> {formatCount(item.likeCount)} likes</span>}</> : <><span><Users size={13} /> {item.subscriberCount ? formatCount(item.subscriberCount) + ' subscribers' : 'Subscribers hidden'}</span><span>{formatCount(item.videoCount)} videos</span><span><Eye size={13} /> {formatCount(item.viewCount)} views</span></>}
-                  <a href={item.url} target="_blank" rel="noreferrer">Open on YouTube <ExternalLink size={12} /></a>
+                  {type === 'video' ? <><span><Eye size={13} /> {formatCount(item.viewCount)} views</span>{item.subscriberCount && <span><Users size={13} /> Creator has {formatCount(item.subscriberCount)} subscribers</span>}{item.likeCount && <span><Heart size={13} /> {formatCount(item.likeCount)} likes</span>}</> : <><span><Users size={13} /> {item.subscriberCount ? formatCount(item.subscriberCount) + ' subscribers' : 'Subscriber count not public'}</span><span>{formatCount(item.videoCount)} videos</span><span><Eye size={13} /> {formatCount(item.viewCount)} total views</span></>}
+                  <a href={item.url} target="_blank" rel="noreferrer">Watch / view channel <ExternalLink size={12} /></a>
                 </div>
               </div>
             </article>
@@ -1391,7 +1385,6 @@ function YouTubeDiscover({ query, setQuery, type, setType, order, setOrder, regi
     </>
   );
 }
-
 function TikTokAccount({ user }: { user: User }) {
   const account = user.tiktok;
   const permissionLabels: Record<string, string> = {
